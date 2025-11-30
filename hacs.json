@@ -1,0 +1,5 @@
+{
+  "name": "Energy Flow Card",
+  "filename": "hacs/energy-flow-card.js",
+  "render_readme": true
+}

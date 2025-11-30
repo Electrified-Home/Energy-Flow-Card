@@ -37,6 +37,20 @@ Launch it via the dev server:
 pnpm dev -- --open test.html
 ```
 
+## Testing with HACS
+
+1. Build the distributable bundle and copy it to the tracked `hacs/` folder:
+
+  ```bash
+  pnpm build:hacs
+  ```
+
+2. Commit and push the generated `hacs/energy-flow-card.js` file.
+3. In Home Assistant → HACS → Integrations → ⋮ → *Custom repositories*, add this GitHub repository with the category **Lovelace**.
+4. Install *Energy Flow Card* from HACS and add `type: custom:energy-flow-card` to your dashboard.
+
+HACS reads `hacs.json` and downloads `hacs/energy-flow-card.js`, so make sure that file exists in the branch or release you reference.
+
 ## Configuration Schema
 
 The card expects the standard Lovelace custom card structure with type `custom:energy-flow-card`. A minimal example:
