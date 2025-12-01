@@ -17,9 +17,8 @@ pnpm install
 
 | Command | Description |
 | --- | --- |
-| `pnpm dev -- --open test.html` | Start Vite in dev mode and open the preview harness. |
-| `pnpm build` | Type-check and bundle the card plus preview files. Outputs to `dist/`. |
-| `pnpm preview` | Serve the production build for inspection. |
+| `pnpm build` | Bundle the card with Rollup. Outputs to `dist/`. |
+| `pnpm build:hacs` | Build and copy bundle to repo root for HACS. |
 | `pnpm test` | Run the Vitest suite once. |
 | `pnpm test:watch` | Run Vitest in watch mode. |
 
@@ -75,7 +74,7 @@ Rules enforced today:
 
 ## Testing Strategy
 
-The Vitest suite currently focuses on configuration normalization and validation logic. As the visualization evolves, extend the tests to cover rendering helpers and data-mapping utilities.
+The test suite focuses on configuration normalization and validation logic. As the visualization evolves, extend the tests to cover rendering helpers and data-mapping utilities.
 
 ## Next Steps
 

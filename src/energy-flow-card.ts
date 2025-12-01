@@ -1,6 +1,7 @@
 import { LitElement, css, html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 
+import './energy-flow-card-editor'
 import {
   type EnergyFlowCardConfig,
   type EnergyFlowConfigInput,
