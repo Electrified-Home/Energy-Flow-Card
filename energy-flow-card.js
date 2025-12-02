@@ -14,15 +14,21 @@ customElements.define("energy-flow-card", class extends HTMLElement {
         { name: "grid_entity", label: "Grid", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
         { name: "grid_name", selector: { entity_name: {} }, context: { entity: "grid_entity" } },
         { name: "grid_icon", selector: { icon: {} }, context: { icon_entity: "grid_entity" } },
+        { name: "grid_min", label: "Grid Min (W)", selector: { number: { mode: "box" } } },
+        { name: "grid_max", label: "Grid Max (W)", selector: { number: { mode: "box" } } },
         { name: "load_entity", label: "Load", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
         { name: "load_name", selector: { entity_name: {} }, context: { entity: "load_entity" } },
         { name: "load_icon", selector: { icon: {} }, context: { icon_entity: "load_entity" } },
+        { name: "load_max", label: "Load Max (W)", selector: { number: { mode: "box" } } },
         { name: "production_entity", label: "Production", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
         { name: "production_name", selector: { entity_name: {} }, context: { entity: "production_entity" } },
         { name: "production_icon", selector: { icon: {} }, context: { icon_entity: "production_entity" } },
+        { name: "production_max", label: "Production Max (W)", selector: { number: { mode: "box" } } },
         { name: "battery_entity", label: "Battery", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
         { name: "battery_name", selector: { entity_name: {} }, context: { entity: "battery_entity" } },
         { name: "battery_icon", selector: { icon: {} }, context: { icon_entity: "battery_entity" } },
+        { name: "battery_min", label: "Battery Min (W)", selector: { number: { mode: "box" } } },
+        { name: "battery_max", label: "Battery Max (W)", selector: { number: { mode: "box" } } },
         { name: "invert_battery", label: "Invert Battery Power", selector: { boolean: {} } }
       ]
     };
@@ -87,108 +93,208 @@ customElements.define("energy-flow-card", class extends HTMLElement {
       battery = -battery;
     }
 
+    // Get min/max values with defaults
+    const gridMin = this._config.grid_min ?? -5000;
+    const gridMax = this._config.grid_max ?? 5000;
+    const loadMax = this._config.load_max ?? 5000;
+    const productionMax = this._config.production_max ?? 5000;
+    const batteryMin = this._config.battery_min ?? -5000;
+    const batteryMax = this._config.battery_max ?? 5000;
+
     this.innerHTML = `
       <ha-card>
         <style>
           .energy-flow-container {
-            padding: 24px;
+            padding: 32px;
             position: relative;
             background: var(--card-background-color, #fff);
+            display: flex;
+            align-items: center;
+            gap: 32px;
           }
-          .node {
-            text-align: center;
-            padding: 12px;
-            border-radius: 8px;
-            background: var(--primary-background-color);
-            border: 2px solid var(--divider-color);
+          .sources-column {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            flex: 0 0 180px;
+          }
+          .hub-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             position: relative;
-            z-index: 10;
           }
-          .node-icon {
-            font-size: 24px;
-            margin-bottom: 8px;
-            color: var(--primary-text-color);
+          .meter {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            position: relative;
           }
-          .node-label {
+          .meter.hub {
+            transform: scale(1.4);
+          }
+          .meter-label {
             font-size: 12px;
-            color: var(--secondary-text-color);
-            margin-bottom: 4px;
+            font-weight: 500;
+            color: var(--primary-text-color);
+            display: flex;
+            align-items: center;
+            gap: 6px;
           }
-          .node-value {
+          .meter-label ha-icon {
+            --mdc-icon-size: 16px;
+          }
+          .meter.hub .meter-label {
+            font-size: 14px;
+          }
+          .meter.hub .meter-label ha-icon {
+            --mdc-icon-size: 20px;
+          }
+          .meter-value {
             font-size: 18px;
             font-weight: 600;
             color: var(--primary-text-color);
+            margin-top: 4px;
           }
-          .node-unit {
+          .meter.hub .meter-value {
+            font-size: 24px;
+          }
+          .meter-unit {
             font-size: 12px;
             color: var(--secondary-text-color);
-            margin-left: 2px;
+            margin-left: 4px;
           }
-          svg {
+          .analog-meter {
+            position: relative;
+            width: 140px;
+            height: 120px;
+            overflow: visible;
+          }
+          .meter.hub .analog-meter {
+            width: 180px;
+            height: 150px;
+            overflow: visible;
+          }
+          .meter-circle-background {
+            fill: var(--divider-color);
+            opacity: 0.3;
+          }
+          .meter-circle-outline {
+            fill: none;
+            stroke: var(--secondary-text-color);
+            stroke-width: 2;
+            opacity: 0.6;
+          }
+          .meter-value-text {
+            fill: var(--primary-text-color);
+            font-size: 16px;
+            font-weight: 600;
+          }
+          .meter-units-text {
+            fill: var(--secondary-text-color);
+            font-size: 8px;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+            opacity: 0.6;
+          }
+          .meter.hub .meter-value-text {
+            font-size: 20px;
+          }
+          .meter.hub .meter-units-text {
+            font-size: 10px;
+          }
+          .meter-needle-line {
+            stroke: var(--primary-text-color);
+            stroke-width: 2;
+            stroke-linecap: round;
+          }
+          .meter-pivot-dot {
+            fill: var(--primary-text-color);
+          }
+          .meter-tick {
+            stroke: var(--secondary-text-color);
+            stroke-width: 1;
+            opacity: 0.5;
+          }
+          .meter-tick-label {
+            fill: var(--secondary-text-color);
+            font-size: 9px;
+            text-anchor: middle;
+          }
+          svg.flow-lines {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             pointer-events: none;
-            z-index: 1;
+            z-index: 0;
           }
           .flow-line {
             fill: none;
-            stroke-width: 3;
+            stroke-width: 2;
             stroke-linecap: round;
+            opacity: 0.6;
           }
           .flow-positive { stroke: var(--success-color, #4caf50); }
           .flow-negative { stroke: var(--error-color, #f44336); }
           .flow-dot {
-            r: 4;
-          }
-          @keyframes flow {
-            0% { offset-distance: 0%; opacity: 1; }
-            100% { offset-distance: 100%; opacity: 0; }
-          }
-          .animated-dot {
-            animation: flow 2s linear infinite;
+            r: 3;
           }
         </style>
-        <div class="energy-flow-container" style="height: 400px; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; gap: 16px;">
-          <svg id="flow-svg"></svg>
+        <div class="energy-flow-container" style="height: 500px;">
+          <svg class="flow-lines" id="flow-svg"></svg>
           
-          <!-- Production/Solar (top center) -->
-          <div class="node" style="grid-column: 2; grid-row: 1;" id="production-node">
-            <ha-icon icon="${this._getIcon('production_icon', 'production_entity', 'mdi:solar-power')}" class="node-icon"></ha-icon>
-            <div class="node-label">${this._getDisplayName('production_name', 'production_entity', 'Production')}</div>
-            <div class="node-value">${Math.abs(production).toFixed(0)}<span class="node-unit">W</span></div>
+          <!-- Sources Column (Left) -->
+          <div class="sources-column">
+            <!-- Production Meter (top) -->
+            <div class="meter" id="production-meter">
+              <div class="meter-label">
+                <ha-icon icon="${this._getIcon('production_icon', 'production_entity', 'mdi:solar-power')}"></ha-icon>
+                ${this._getDisplayName('production_name', 'production_entity', 'Production')}
+              </div>
+              ${this._createAnalogMeter('production', production, 0, productionMax, false, false)}
+            </div>
+            
+            <!-- Grid Meter (middle) -->
+            <div class="meter" id="grid-meter">
+              <div class="meter-label">
+                <ha-icon icon="${this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower')}"></ha-icon>
+                ${this._getDisplayName('grid_name', 'grid_entity', 'Grid')}
+              </div>
+              ${this._createAnalogMeter('grid', grid, gridMin, gridMax, true, false)}
+            </div>
+            
+            <!-- Battery Meter (bottom) -->
+            <div class="meter" id="battery-meter">
+              <div class="meter-label">
+                <ha-icon icon="${this._getIcon('battery_icon', 'battery_entity', 'mdi:battery')}"></ha-icon>
+                ${this._getDisplayName('battery_name', 'battery_entity', 'Battery')}
+              </div>
+              ${this._createAnalogMeter('battery', battery, batteryMin, batteryMax, true, false)}
+            </div>
           </div>
-
-          <!-- Battery (left center) -->
-          <div class="node" style="grid-column: 1; grid-row: 2;" id="battery-node">
-            <ha-icon icon="${this._getIcon('battery_icon', 'battery_entity', 'mdi:battery')}" class="node-icon"></ha-icon>
-            <div class="node-label">${this._getDisplayName('battery_name', 'battery_entity', 'Battery')}</div>
-            <div class="node-value">${Math.abs(battery).toFixed(0)}<span class="node-unit">W</span></div>
-          </div>
-
-          <!-- Load (right center) -->
-          <div class="node" style="grid-column: 3; grid-row: 2;" id="load-node">
-            <ha-icon icon="${this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt')}" class="node-icon"></ha-icon>
-            <div class="node-label">${this._getDisplayName('load_name', 'load_entity', 'Load')}</div>
-            <div class="node-value">${Math.abs(load).toFixed(0)}<span class="node-unit">W</span></div>
-          </div>
-
-          <!-- Grid (bottom center) -->
-          <div class="node" style="grid-column: 2; grid-row: 3;" id="grid-node">
-            <ha-icon icon="${this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower')}" class="node-icon"></ha-icon>
-            <div class="node-label">${this._getDisplayName('grid_name', 'grid_entity', 'Grid')}</div>
-            <div class="node-value">${Math.abs(grid).toFixed(0)}<span class="node-unit">W</span></div>
+          
+          <!-- Hub Column (Right) - Load Meter -->
+          <div class="hub-column">
+            <div class="meter hub" id="load-meter">
+              <div class="meter-label">
+                <ha-icon icon="${this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt')}"></ha-icon>
+                ${this._getDisplayName('load_name', 'load_entity', 'Load')}
+              </div>
+              ${this._createAnalogMeter('load', load, 0, loadMax, false, true)}
+            </div>
           </div>
         </div>
       </ha-card>
     `;
 
-    // Store values for resize handler
+    // Store values for resize handler and draw flows
     this._lastValues = { grid, production, load, battery };
-
-    // Draw flow lines after DOM is ready
     requestAnimationFrame(() => this._drawFlows(grid, production, load, battery));
   }
 
@@ -226,16 +332,118 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     return fallback;
   }
 
+  _createAnalogMeter(id, value, min, max, bidirectional, isHub) {
+    // Classic volt-meter style: full semicircle (180°) on top half
+    const width = isHub ? 180 : 140;
+    const height = isHub ? 120 : 100; // Only show top portion
+    const radius = isHub ? 65 : 50;
+    const centerX = width / 2;
+    const centerY = radius + 10; // Circle center (will be partially off-canvas)
+    const fullHeight = radius * 2 + 20; // Full height to show complete circle
+    const startAngle = 180;  // degrees (left side, 9 o'clock)
+    const endAngle = 0;      // degrees (right side, 3 o'clock)
+    const totalAngle = 180;  // Full semicircle
+    
+    // Calculate percentage and angle for needle
+    let percentage, angle, isNegative;
+    
+    if (bidirectional) {
+      // Bidirectional meter (grid, battery): min on left, 0 at top, max on right
+      const range = max - min;
+      percentage = (value - min) / range;
+      angle = startAngle - (percentage * totalAngle); // 180° down to 0°
+      isNegative = value < 0;
+    } else {
+      // Unidirectional meter (production, load): 0 on left, max on right
+      percentage = Math.min(Math.max(value / max, 0), 1);
+      angle = startAngle - (percentage * totalAngle); // 180° down to 0°
+      isNegative = false;
+    }
+    
+    // Generate only 3 tick marks: min, zero/mid, max
+    const ticks = bidirectional ? [min, 0, max] : [0, max/2, max];
+    
+    const tickMarks = ticks.map((tickValue) => {
+      const tickPercentage = bidirectional 
+        ? (tickValue - min) / (max - min)
+        : tickValue / max;
+      const tickAngle = startAngle - (tickPercentage * totalAngle);
+      const tickRad = (tickAngle * Math.PI) / 180;
+      const tickStartR = radius;
+      const tickEndR = radius - 8;
+      
+      const x1 = centerX + tickStartR * Math.cos(tickRad);
+      const y1 = centerY - tickStartR * Math.sin(tickRad);
+      const x2 = centerX + tickEndR * Math.cos(tickRad);
+      const y2 = centerY - tickEndR * Math.sin(tickRad);
+      
+      return `<line class="meter-tick" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
+    }).join('');
+    
+    // Needle position
+    const needleRad = (angle * Math.PI) / 180;
+    const needleLength = radius - 5;
+    const needleX = centerX + needleLength * Math.cos(needleRad);
+    const needleY = centerY - needleLength * Math.sin(needleRad);
+    
+    // Background: full circle (gray)
+    const circleRadius = radius;
+    
+    // Clip height: just under the center point
+    const clipHeight = centerY + 5;
+    
+    // Text positioning in lower half (relative to circle size)
+    const valueY = centerY + (radius * 0.5); // Value number position
+    const unitsY = centerY + (radius * 0.7); // "WATTS" below the value
+    const fontSize = isHub ? 20 : 16;
+    const unitsFontSize = isHub ? 10 : 8;
+    
+    return `
+      <svg class="analog-meter" viewBox="0 0 ${width} ${fullHeight}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="clip-${id}">
+            <rect x="0" y="0" width="${width}" height="${clipHeight}" />
+          </clipPath>
+        </defs>
+        
+        <!-- Clipped content (background fill only) -->
+        <g clip-path="url(#clip-${id})">
+          <circle class="meter-circle-background" cx="${centerX}" cy="${centerY}" r="${circleRadius}" />
+        </g>
+        
+        <!-- Unclipped full circle outline -->
+        <circle class="meter-circle-outline" cx="${centerX}" cy="${centerY}" r="${circleRadius}" />
+        
+        <!-- Tick marks (no labels) -->
+        ${tickMarks}
+        
+        <!-- Needle -->
+        <line class="meter-needle meter-needle-line" 
+              x1="${centerX}" y1="${centerY}" 
+              x2="${needleX}" y2="${needleY}" />
+        
+        <!-- Pivot dot -->
+        <circle class="meter-pivot-dot" cx="${centerX}" cy="${centerY}" r="3" />
+        
+        <!-- Value number -->
+        <text class="meter-value-text" x="${centerX}" y="${valueY}" text-anchor="middle" font-size="${fontSize}">${value.toFixed(0)}</text>
+        
+        <!-- Units label -->
+        <text class="meter-units-text" x="${centerX}" y="${unitsY}" text-anchor="middle" font-size="${unitsFontSize}">WATTS</text>
+      </svg>
+    `;
+  }
+
   _drawFlows(grid, production, load, battery) {
     const svg = this.querySelector('#flow-svg');
     if (!svg) return;
 
-    const gridNode = this.querySelector('#grid-node');
-    const productionNode = this.querySelector('#production-node');
-    const loadNode = this.querySelector('#load-node');
-    const batteryNode = this.querySelector('#battery-node');
+    const productionMeter = this.querySelector('#production-meter');
+    const gridMeter = this.querySelector('#grid-meter');
+    const batteryMeter = this.querySelector('#battery-meter');
+    const loadMeter = this.querySelector('#load-meter');
 
-    if (!gridNode || !productionNode || !loadNode || !batteryNode) return;
+    if (!productionMeter || !gridMeter || !batteryMeter || !loadMeter) return;
 
     const getCenter = (el) => {
       const rect = el.getBoundingClientRect();
@@ -246,108 +454,54 @@ customElements.define("energy-flow-card", class extends HTMLElement {
       };
     };
 
-    const gridPos = getCenter(gridNode);
-    const productionPos = getCenter(productionNode);
-    const loadPos = getCenter(loadNode);
-    const batteryPos = getCenter(batteryNode);
+    const productionPos = getCenter(productionMeter);
+    const gridPos = getCenter(gridMeter);
+    const batteryPos = getCenter(batteryMeter);
+    const loadPos = getCenter(loadMeter);
 
     svg.innerHTML = '';
 
-    // Energy flow logic:
-    // Sources: Production (solar), Grid (import), Battery (discharge)
-    // Sinks: Load (always), Battery (charge), Grid (export)
-    
-    // Available energy sources
-    let availableProduction = Math.max(0, production);
-    let gridImport = Math.max(0, grid);
-    let batteryDischarge = Math.max(0, battery);
-    
-    // Energy demands
-    let remainingLoad = Math.abs(load);
-    let batteryCharge = Math.max(0, -battery);
-    let gridExport = Math.max(0, -grid);
-    
-    // Priority 1: Production serves load first
-    if (availableProduction > 0 && remainingLoad > 0) {
-      const toLoad = Math.min(availableProduction, remainingLoad);
-      this._drawFlow(svg, productionPos, loadPos, toLoad, true);
-      availableProduction -= toLoad;
-      remainingLoad -= toLoad;
+    // Energy flow logic (simplified for now - just show active flows)
+    if (production > 100) {
+      this._drawFlow(svg, productionPos, loadPos, production, true);
     }
     
-    // Priority 2: Production charges battery (if excess and battery is charging)
-    if (availableProduction > 0 && batteryCharge > 0) {
-      const toBattery = Math.min(availableProduction, batteryCharge);
-      this._drawFlow(svg, productionPos, batteryPos, toBattery, true);
-      availableProduction -= toBattery;
-      batteryCharge -= toBattery;
+    if (grid > 100) {
+      this._drawFlow(svg, gridPos, loadPos, grid, true);
+    } else if (grid < -100) {
+      this._drawFlow(svg, loadPos, gridPos, Math.abs(grid), false);
     }
     
-    // Priority 3: Production exports to grid (if still excess)
-    if (availableProduction > 0 && gridExport > 0) {
-      const toGrid = Math.min(availableProduction, gridExport);
-      this._drawFlow(svg, productionPos, gridPos, toGrid, true);
-      availableProduction -= toGrid;
-      gridExport -= toGrid;
-    }
-    
-    // Priority 4: Battery discharge serves remaining load
-    if (batteryDischarge > 0 && remainingLoad > 0) {
-      const toLoad = Math.min(batteryDischarge, remainingLoad);
-      this._drawFlow(svg, batteryPos, loadPos, toLoad, true);
-      batteryDischarge -= toLoad;
-      remainingLoad -= toLoad;
-    }
-    
-    // Priority 5: Battery exports to grid (rare case)
-    if (batteryDischarge > 0 && gridExport > 0) {
-      const toGrid = Math.min(batteryDischarge, gridExport);
-      this._drawFlow(svg, batteryPos, gridPos, toGrid, true);
-      batteryDischarge -= toGrid;
-      gridExport -= toGrid;
-    }
-    
-    // Priority 6: Grid import serves remaining load
-    if (gridImport > 0 && remainingLoad > 0) {
-      const toLoad = Math.min(gridImport, remainingLoad);
-      this._drawFlow(svg, gridPos, loadPos, toLoad, true);
-      gridImport -= toLoad;
-      remainingLoad -= toLoad;
-    }
-    
-    // Priority 7: Grid charges battery (if importing and battery charging)
-    if (gridImport > 0 && batteryCharge > 0) {
-      const toBattery = Math.min(gridImport, batteryCharge);
-      this._drawFlow(svg, gridPos, batteryPos, toBattery, true);
-      gridImport -= toBattery;
-      batteryCharge -= toBattery;
+    if (battery > 100) {
+      this._drawFlow(svg, batteryPos, loadPos, battery, true);
+    } else if (battery < -100) {
+      this._drawFlow(svg, loadPos, batteryPos, Math.abs(battery), false);
     }
   }
 
   _drawFlow(svg, from, to, power, isPositive) {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const midX = (from.x + to.x) / 2;
-    const midY = (from.y + to.y) / 2;
+    const controlX = (from.x + to.x) / 2;
+    const controlY = (from.y + to.y) / 2;
     
-    // Curved path
-    const d = `M ${from.x},${from.y} Q ${midX},${midY} ${to.x},${to.y}`;
+    const d = `M ${from.x},${from.y} Q ${controlX},${controlY} ${to.x},${to.y}`;
     path.setAttribute('d', d);
     path.setAttribute('class', `flow-line ${isPositive ? 'flow-positive' : 'flow-negative'}`);
     path.setAttribute('id', `path-${Math.random()}`);
     
     svg.appendChild(path);
 
-    // Animate dots along path
-    const numDots = Math.min(Math.max(Math.floor(power / 500), 1), 5);
+    // Animate dots
+    const numDots = Math.min(Math.max(Math.floor(power / 1000), 1), 3);
     for (let i = 0; i < numDots; i++) {
       const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       circle.setAttribute('class', `flow-dot ${isPositive ? 'flow-positive' : 'flow-negative'}`);
-      circle.setAttribute('r', '4');
+      circle.setAttribute('r', '3');
       
       const animateMotion = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
       animateMotion.setAttribute('dur', '2s');
       animateMotion.setAttribute('repeatCount', 'indefinite');
-      animateMotion.setAttribute('begin', `${i * 0.4}s`);
+      animateMotion.setAttribute('begin', `${i * 0.6}s`);
       
       const mpath = document.createElementNS('http://www.w3.org/2000/svg', 'mpath');
       mpath.setAttributeNS('http://www.w3.org/1999/xlink', 'href', `#${path.id}`);
