@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Energy Flow Card Simulator</title>
+  <style>
+    :root {
+      --card-background-color: #fff;
+      --primary-background-color: #fafafa;
+      --divider-color: #e0e0e0;
+      --primary-text-color: #212121;
+      --secondary-text-color: #727272;
+      --success-color: #4caf50;
+      --error-color: #f44336;
+      --warning-color: #ff9800;
+    }
+
+    body {
+      font-family: 'Roboto', 'Noto', sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .controls {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .control-group {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .control-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .control-item label {
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: var(--primary-text-color);
+    }
+
+    .control-item input {
+      padding: 8px;
+      border: 1px solid var(--divider-color);
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .presets {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .preset-btn {
+      padding: 8px 16px;
+      background: var(--primary-background-color);
+      border: 1px solid var(--divider-color);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .preset-btn:hover {
+      background: var(--divider-color);
+    }
+
+    ha-card {
+      display: block;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      margin: 0 0 20px 0;
+      color: var(--primary-text-color);
+    }
+
+    h3 {
+      margin: 0 0 12px 0;
+      color: var(--primary-text-color);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Energy Flow Card Simulator</h1>
+    
+    <div class="controls">
+      <h3>Controls</h3>
+      <div class="control-group">
+        <div class="control-item">
+          <label for="grid-input">Grid (W)</label>
+          <input type="number" id="grid-input" value="0" step="100">
+          <small>Positive = Import, Negative = Export</small>
+        </div>
+        <div class="control-item">
+          <label for="load-input">Load (W)</label>
+          <input type="number" id="load-input" value="2000" step="100">
+        </div>
+        <div class="control-item">
+          <label for="production-input">Production (W)</label>
+          <input type="number" id="production-input" value="3000" step="100">
+        </div>
+        <div class="control-item">
+          <label for="battery-input">Battery (W)</label>
+          <input type="number" id="battery-input" value="-500" step="100">
+          <small>Positive = Discharge, Negative = Charge</small>
+        </div>
+      </div>
+
+      <h3>Scenarios</h3>
+      <div class="presets">
+        <button class="preset-btn" onclick="setScenario('sunny')">☀️ Sunny Day</button>
+        <button class="preset-btn" onclick="setScenario('night')">🌙 Night</button>
+        <button class="preset-btn" onclick="setScenario('cloudy')">⛅ Cloudy</button>
+        <button class="preset-btn" onclick="setScenario('export')">⚡ Heavy Export</button>
+        <button class="preset-btn" onclick="setScenario('import')">🔌 Heavy Import</button>
+        <button class="preset-btn" onclick="setScenario('battery-charge')">🔋 Battery Charging</button>
+        <button class="preset-btn" onclick="setScenario('battery-discharge')">🔋 Battery Discharging</button>
+      </div>
+    </div>
+
+    <div id="card-container"></div>
+  </div>
+
+  <script src="energy-flow-card.js"></script>
+  <script>
+    // Mock Home Assistant environment
+    class MockHass {
+      constructor() {
+        this.states = {
+          'sensor.grid': { state: '0', attributes: { unit_of_measurement: 'W' } },
+          'sensor.load': { state: '2000', attributes: { unit_of_measurement: 'W' } },
+          'sensor.production': { state: '3000', attributes: { unit_of_measurement: 'W' } },
+          'sensor.battery': { state: '-500', attributes: { unit_of_measurement: 'W' } }
+        };
+      }
+
+      updateState(entity, value) {
+        if (this.states[entity]) {
+          this.states[entity].state = String(value);
+        }
+      }
+    }
+
+    const hass = new MockHass();
+    const cardContainer = document.getElementById('card-container');
+    
+    // Create card instance
+    const card = document.createElement('energy-flow-card');
+    card.setConfig({
+      grid_entity: 'sensor.grid',
+      load_entity: 'sensor.load',
+      production_entity: 'sensor.production',
+      battery_entity: 'sensor.battery',
+      invert_battery: false
+    });
+    card.hass = hass;
+    cardContainer.appendChild(card);
+
+    // Update function
+    function updateCard() {
+      const grid = parseFloat(document.getElementById('grid-input').value) || 0;
+      const load = parseFloat(document.getElementById('load-input').value) || 0;
+      const production = parseFloat(document.getElementById('production-input').value) || 0;
+      const battery = parseFloat(document.getElementById('battery-input').value) || 0;
+
+      hass.updateState('sensor.grid', grid);
+      hass.updateState('sensor.load', load);
+      hass.updateState('sensor.production', production);
+      hass.updateState('sensor.battery', battery);
+
+      card.hass = { ...hass };
+    }
+
+    // Attach event listeners
+    document.getElementById('grid-input').addEventListener('input', updateCard);
+    document.getElementById('load-input').addEventListener('input', updateCard);
+    document.getElementById('production-input').addEventListener('input', updateCard);
+    document.getElementById('battery-input').addEventListener('input', updateCard);
+
+    // Scenario presets
+    function setScenario(scenario) {
+      const scenarios = {
+        'sunny': { grid: -1500, load: 2000, production: 4000, battery: -500 },
+        'night': { grid: 1500, load: 1000, production: 0, battery: 500 },
+        'cloudy': { grid: 500, load: 2000, production: 1000, battery: 500 },
+        'export': { grid: -3000, load: 1000, production: 5000, battery: -1000 },
+        'import': { grid: 3000, load: 4000, production: 500, battery: 500 },
+        'battery-charge': { grid: 0, load: 2000, production: 3500, battery: -1500 },
+        'battery-discharge': { grid: 0, load: 3000, production: 1000, battery: 2000 }
+      };
+
+      if (scenarios[scenario]) {
+        document.getElementById('grid-input').value = scenarios[scenario].grid;
+        document.getElementById('load-input').value = scenarios[scenario].load;
+        document.getElementById('production-input').value = scenarios[scenario].production;
+        document.getElementById('battery-input').value = scenarios[scenario].battery;
+        updateCard();
+      }
+    }
+
+    // Initial render
+    updateCard();
+  </script>
+</body>
+</html>

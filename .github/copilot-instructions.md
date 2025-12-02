@@ -1,20 +1,37 @@
-- [x] Verify that the copilot-instructions.md file in the .github directory is created.
+## Purpose
 
-- [x] Clarify Project Requirements
+We are developing a **Home Assistant Energy Flow Card**.
+The goal is a single-file JavaScript custom card that is:
 
-- [x] Scaffold the Project
+* easy to test
+* easy to configure
+* easy to understand
+* elegant and robust
+* and ultimately a meaningful improvement over existing energy-flow cards.
 
-- [x] Customize the Project
+## Development Approach
 
-- [x] Install Required Extensions
+We are **not** using HACS or a build pipeline.
+For now, everything stays in **one JavaScript file** placed directly in `/config/www`.
+We copy-paste that file during development.
+Keep the structure simple and predictable so changes are easy to iterate.
 
-- [x] Compile the Project
+## Card Behavior
 
-- [x] Create and Run Task
+The card must:
 
-- [x] Launch the Project
+* register itself properly with Home Assistant
+* expose a configuration editor so it’s fully usable through the UI
+* provide a clean, intuitive config model
+* support visual configuration without YAML
 
-- [x] Ensure Documentation is Complete
-- Work through each checklist item systematically.
-- Keep communication concise and focused.
-- Follow development best practices.
+The editor does not need to be complex at first—just functional.
+We incrementally refine it.
+
+## Vision
+
+This is a fresh take on an Energy Flow Card:
+clean display, tasteful animations, smooth layout, accurate data flow, and clear states.
+The design should feel more modern and more deliberate than existing solutions.
+
+Focus on clarity, maintainability, and incremental enhancements.
