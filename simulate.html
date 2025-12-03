@@ -154,6 +154,13 @@
       
       <div class="control-group">
         <div class="control-item">
+          <label for="view-mode-select">View Mode</label>
+          <select id="view-mode-select" style="padding: 8px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--primary-background-color); color: var(--primary-text-color); font-size: 14px;">
+            <option value="default">Default (Gauges)</option>
+            <option value="compact">Compact Bar</option>
+          </select>
+        </div>
+        <div class="control-item">
           <label>
             <input type="checkbox" id="invert-battery-data">
             Invert Battery Data
@@ -287,6 +294,7 @@
     // Create card instance
     const card = document.createElement('energy-flow-card');
     card.setConfig({
+      view_mode: 'default',
       grid_entity: 'sensor.grid',
       load_entity: 'sensor.load',
       production_entity: 'sensor.production',
@@ -305,6 +313,7 @@
       const battery = parseFloat(document.getElementById('battery-input').value) || 0;
       const invertData = document.getElementById('invert-battery-data').checked;
       const invertView = document.getElementById('invert-battery-view').checked;
+      const viewMode = document.getElementById('view-mode-select').value;
 
       hass.updateState('sensor.grid', grid);
       hass.updateState('sensor.load', load);
@@ -313,6 +322,7 @@
 
       // Update config with invert options
       card.setConfig({
+        view_mode: viewMode,
         grid_entity: 'sensor.grid',
         load_entity: 'sensor.load',
         production_entity: 'sensor.production',
@@ -331,6 +341,7 @@
     document.getElementById('battery-input').addEventListener('input', updateCard);
     document.getElementById('invert-battery-data').addEventListener('change', updateCard);
     document.getElementById('invert-battery-view').addEventListener('change', updateCard);
+    document.getElementById('view-mode-select').addEventListener('change', updateCard);
 
     // Scenario presets with tweening
     let tweenInterval = null;

@@ -342,6 +342,7 @@ class EnergyFlowCard extends HTMLElement {
   static getConfigForm() {
     return {
       schema: [
+        { name: "view_mode", label: "View Mode", selector: { select: { options: [{value: "default", label: "Default"}, {value: "compact", label: "Compact Bar"}] } } },
         { name: "grid_entity", label: "Grid", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
         { name: "grid_name", selector: { entity_name: {} }, context: { entity: "grid_entity" } },
         { name: "grid_icon", selector: { icon: {} }, context: { icon_entity: "grid_entity" } },
@@ -436,6 +437,13 @@ class EnergyFlowCard extends HTMLElement {
     // Invert battery data if configured (affects interpretation)
     if (this._config.invert_battery_data) {
       battery = -battery;
+    }
+
+    // Check view mode
+    const viewMode = this._config.view_mode || 'default';
+    if (viewMode === 'compact') {
+      this._renderCompactView(grid, load, production, battery);
+      return;
     }
 
     // Get min/max values with defaults
@@ -1164,6 +1172,217 @@ class EnergyFlowCard extends HTMLElement {
       animateMotion.appendChild(mpath);
       circle.appendChild(animateMotion);
       flowLayer.appendChild(circle);
+    }
+  }
+
+  _renderCompactView(grid, load, production, battery) {
+    // Calculate contributions to load
+    const productionToLoad = Math.min(Math.max(0, production), load);
+    const batteryToLoad = Math.min(Math.max(0, battery), Math.max(0, load - productionToLoad));
+    const gridToLoad = Math.max(0, load - productionToLoad - batteryToLoad);
+
+    // Calculate percentages
+    const total = load || 1; // Avoid division by zero
+    const productionPercent = (productionToLoad / total) * 100;
+    const batteryPercent = (batteryToLoad / total) * 100;
+    const gridPercent = (gridToLoad / total) * 100;
+
+    // Colors
+    const productionColor = '#4caf50'; // Green
+    const batteryColor = '#ffeb3b'; // Yellow
+    const gridColor = '#f44336'; // Red
+
+    // Only render if structure doesn't exist or needs update
+    if (!this.querySelector('.compact-view') || this._lastViewMode !== 'compact') {
+      this.innerHTML = `
+        <ha-card>
+          <style>
+            :host {
+              display: block;
+              width: 100%;
+            }
+            ha-card {
+              padding: 16px;
+              box-sizing: border-box;
+            }
+            .compact-view {
+              display: flex;
+              align-items: center;
+              gap: 12px;
+              width: 100%;
+            }
+            .bar-container {
+              flex: 1;
+              height: 60px;
+              background: rgb(40, 40, 40);
+              border-radius: 8px;
+              overflow: hidden;
+              display: flex;
+              position: relative;
+            }
+            .bar-segment {
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 6px;
+              font-size: 14px;
+              font-weight: 600;
+              color: rgba(0, 0, 0, 0.8);
+              transition: width 0.5s ease-out;
+              position: relative;
+              overflow: hidden;
+            }
+            .bar-segment-content {
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              white-space: nowrap;
+            }
+            .bar-segment-icon {
+              width: 24px;
+              height: 24px;
+              flex-shrink: 0;
+              opacity: 0.9;
+            }
+            .bar-segment-label {
+              text-shadow: 0 1px 2px rgba(255,255,255,0.3);
+            }
+            .bar-segment[data-width-px] .bar-segment-label {
+              display: none;
+            }
+            .bar-segment[data-width-px="show-label"] .bar-segment-label {
+              display: inline;
+            }
+            .bar-segment[data-width-px] .bar-segment-icon {
+              display: none;
+            }
+            .bar-segment[data-width-px="show-icon"] .bar-segment-icon,
+            .bar-segment[data-width-px="show-label"] .bar-segment-icon {
+              display: block;
+            }
+            .load-value {
+              font-size: 24px;
+              font-weight: 600;
+              color: rgb(255, 255, 255);
+              white-space: nowrap;
+              min-width: 100px;
+              text-align: right;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            }
+            .load-icon {
+              width: 28px;
+              height: 28px;
+              flex-shrink: 0;
+              color: rgb(160, 160, 160);
+              display: flex;
+              align-items: center;
+            }
+            .load-text {
+              display: flex;
+              align-items: baseline;
+              gap: 4px;
+              line-height: 1;
+            }
+            .load-unit {
+              font-size: 14px;
+              color: rgb(160, 160, 160);
+              margin-left: 4px;
+            }
+          </style>
+          <div class="compact-view">
+            <div class="bar-container">
+              <div id="grid-segment" class="bar-segment" style="background: ${gridColor}; width: ${gridPercent}%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower')}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+              <div id="battery-segment" class="bar-segment" style="background: ${batteryColor}; width: ${batteryPercent}%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this._getIcon('battery_icon', 'battery_entity', 'mdi:battery')}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+              <div id="production-segment" class="bar-segment" style="background: ${productionColor}; width: ${productionPercent}%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this._getIcon('production_icon', 'production_entity', 'mdi:solar-power')}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+            </div>
+            <div class="load-value">
+              <ha-icon class="load-icon" icon="${this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt')}"></ha-icon>
+              <div class="load-text">
+                <span id="load-value-text">${Math.round(load)}</span><span class="load-unit">W</span>
+              </div>
+            </div>
+          </div>
+        </ha-card>
+      `;
+      this._lastViewMode = 'compact';
+    }
+
+    // Update segment widths and labels
+    const productionSegment = this.querySelector('#production-segment');
+    const batterySegment = this.querySelector('#battery-segment');
+    const gridSegment = this.querySelector('#grid-segment');
+    const loadValueText = this.querySelector('#load-value-text');
+
+    if (productionSegment) {
+      productionSegment.style.width = `${productionPercent}%`;
+      const label = productionSegment.querySelector('.bar-segment-label');
+      if (label && productionToLoad > 0) {
+        label.textContent = `${Math.round(productionToLoad)}W`;
+      }
+      // Calculate pixel width for visibility logic
+      const pixelWidth = (productionPercent / 100) * (this.querySelector('.bar-container')?.offsetWidth || 0);
+      this._updateSegmentVisibility(productionSegment, pixelWidth, productionToLoad > 0);
+    }
+
+    if (batterySegment) {
+      batterySegment.style.width = `${batteryPercent}%`;
+      const label = batterySegment.querySelector('.bar-segment-label');
+      if (label && batteryToLoad > 0) {
+        label.textContent = `${Math.round(batteryToLoad)}W`;
+      }
+      const pixelWidth = (batteryPercent / 100) * (this.querySelector('.bar-container')?.offsetWidth || 0);
+      this._updateSegmentVisibility(batterySegment, pixelWidth, batteryToLoad > 0);
+    }
+
+    if (gridSegment) {
+      gridSegment.style.width = `${gridPercent}%`;
+      const label = gridSegment.querySelector('.bar-segment-label');
+      if (label && gridToLoad > 0) {
+        label.textContent = `${Math.round(gridToLoad)}W`;
+      }
+      const pixelWidth = (gridPercent / 100) * (this.querySelector('.bar-container')?.offsetWidth || 0);
+      this._updateSegmentVisibility(gridSegment, pixelWidth, gridToLoad > 0);
+    }
+
+    if (loadValueText) {
+      loadValueText.textContent = Math.round(load);
+    }
+  }
+
+  _updateSegmentVisibility(segment, pixelWidth, hasValue) {
+    if (!segment || !hasValue) {
+      segment?.setAttribute('data-width-px', '');
+      return;
+    }
+
+    // Thresholds for responsive hiding
+    const SHOW_LABEL_THRESHOLD = 80; // Show label if segment is at least 80px wide
+    const SHOW_ICON_THRESHOLD = 40;  // Show icon if segment is at least 40px wide
+
+    if (pixelWidth >= SHOW_LABEL_THRESHOLD) {
+      segment.setAttribute('data-width-px', 'show-label');
+    } else if (pixelWidth >= SHOW_ICON_THRESHOLD) {
+      segment.setAttribute('data-width-px', 'show-icon');
+    } else {
+      segment.setAttribute('data-width-px', '');
     }
   }
 }
