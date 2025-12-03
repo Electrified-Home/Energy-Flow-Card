@@ -6,6 +6,8 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     this._flowDots = new Map(); // Store dot states: flowId -> array of { progress: 0-1, velocity: units/sec }
     this._lastAnimationTime = null;
     this._needleAngles = new Map(); // Store needle angles: id -> { target: angle, current: angle, ghost: angle }
+    this._iconCache = new Map(); // Cache extracted icon paths: icon -> SVG path data
+    this._iconsExtracted = false; // Track if we've extracted icon paths yet
     
     // Animation speed multiplier (higher = faster dots)
     this._speedMultiplier = 1.0;
@@ -143,6 +145,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
 
     // Only do full render if structure doesn't exist
     if (!this.querySelector('.energy-flow-svg')) {
+      this._iconsExtracted = false; // Reset flag on full render
       this.innerHTML = `
         <ha-card>
           <style>
@@ -246,6 +249,13 @@ customElements.define("energy-flow-card", class extends HTMLElement {
 
     // Store values for resize handler and draw flows
     this._lastValues = { grid, production, load, battery };
+    
+    // Extract icon paths if not already done
+    if (!this._iconsExtracted) {
+      requestAnimationFrame(() => {
+        this._extractIconPaths();
+      });
+    }
     
     // Wait for DOM to be ready before drawing flows
     requestAnimationFrame(() => {
@@ -380,11 +390,17 @@ customElements.define("energy-flow-card", class extends HTMLElement {
         
         <text x="${centerX}" y="15" text-anchor="middle" font-size="${labelFontSize}" fill="rgb(255, 255, 255)" font-weight="500">${label}</text>
         
-        <foreignObject x="${centerX - 12}" y="${centerY - 35}" width="24" height="24">
-          <div xmlns="http://www.w3.org/1999/xhtml" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">
-            <ha-icon icon="${icon}" style="--mdc-icon-size: 24px; color: rgb(160, 160, 160);"></ha-icon>
+        <!-- Icon rendered via foreignObject (for extraction source) -->
+        <foreignObject id="icon-source-${id}" x="${centerX - 18}" y="${centerY - 42}" width="36" height="36">
+          <div xmlns="http://www.w3.org/1999/xhtml" style="width: 36px; height: 36px;">
+            <ha-icon icon="${icon}" style="--mdc-icon-size: 36px; color: rgb(160, 160, 160);"></ha-icon>
           </div>
         </foreignObject>
+        
+        <!-- Icon rendered as native SVG path (populated after extraction, will overlay) -->
+        <g id="icon-display-${id}" transform="translate(${centerX - 18}, ${centerY - 42}) scale(1.5)">
+          <!-- Path will be inserted here by _extractIconPaths -->
+        </g>
         
         <line id="ghost-needle-${id}" x1="${centerX}" y1="${centerY}" x2="${needleX}" y2="${needleY}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" opacity="0.3" />
         
@@ -862,6 +878,143 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     
     // Remove dot state
     this._flowDots.delete(flowId);
+  }
+
+  _extractIconPaths() {
+    // Extract SVG paths from ha-icon shadow DOM and render as native SVG
+    const meterIds = ['production', 'battery', 'grid', 'load'];
+    
+    meterIds.forEach(id => {
+      const iconSourceFO = this.querySelector(`#icon-source-${id}`);
+      const iconDisplay = this.querySelector(`#icon-display-${id}`);
+      
+      if (!iconSourceFO || !iconDisplay) {
+        console.warn(`Icon elements not found for ${id}`);
+        return;
+      }
+      
+      // Find the ha-icon inside the foreignObject
+      const haIconDiv = iconSourceFO.querySelector('div');
+      if (!haIconDiv) {
+        console.warn(`No div found in foreignObject for ${id}`);
+        return;
+      }
+      
+      const iconSource = haIconDiv.querySelector('ha-icon');
+      if (!iconSource) {
+        console.warn(`No ha-icon found for ${id}`);
+        return;
+      }
+      
+      const iconName = iconSource.getAttribute('icon');
+      if (!iconName) {
+        console.warn(`No icon attribute for ${id}`);
+        return;
+      }
+      
+      // Check cache first
+      if (this._iconCache.has(iconName)) {
+        const pathData = this._iconCache.get(iconName);
+        this._renderIconPath(iconDisplay, pathData);
+        // Hide the foreignObject version once we have the native SVG
+        iconSourceFO.style.display = 'none';
+        return;
+      }
+      
+      // Try multiple times with increasing delays
+      const attemptExtraction = (attempt = 0, maxAttempts = 10) => {
+        const delay = attempt * 100; // 0ms, 100ms, 200ms, 300ms, etc.
+        
+        setTimeout(() => {
+          try {
+            const shadowRoot = iconSource.shadowRoot;
+            if (!shadowRoot) {
+              if (attempt < maxAttempts) {
+                attemptExtraction(attempt + 1, maxAttempts);
+              }
+              return;
+            }
+            
+            // In Home Assistant, ha-icon contains ha-svg-icon which has its own shadow DOM
+            // Try direct SVG first (for simple cases like simulate.html)
+            let svgElement = shadowRoot.querySelector('svg');
+            
+            // If no direct SVG, check if there's a ha-svg-icon element
+            if (!svgElement) {
+              const haSvgIcon = shadowRoot.querySelector('ha-svg-icon');
+              if (haSvgIcon && haSvgIcon.shadowRoot) {
+                svgElement = haSvgIcon.shadowRoot.querySelector('svg');
+              }
+            }
+            
+            if (!svgElement) {
+              if (attempt < maxAttempts) {
+                attemptExtraction(attempt + 1, maxAttempts);
+              }
+              return;
+            }
+            
+            const pathElement = svgElement.querySelector('path');
+            if (!pathElement) {
+              if (attempt < maxAttempts) {
+                attemptExtraction(attempt + 1, maxAttempts);
+              }
+              return;
+            }
+            
+            const pathData = pathElement.getAttribute('d');
+            if (pathData) {
+              // Cache the path data
+              this._iconCache.set(iconName, pathData);
+              
+              // Render as native SVG
+              this._renderIconPath(iconDisplay, pathData);
+              
+              // Hide the foreignObject version once we have the native SVG
+              iconSourceFO.style.display = 'none';
+            } else {
+              if (attempt < maxAttempts) {
+                attemptExtraction(attempt + 1, maxAttempts);
+              }
+            }
+          } catch (e) {
+            console.error(`Failed to extract icon path for ${iconName} (attempt ${attempt + 1}):`, e);
+            if (attempt < maxAttempts) {
+              attemptExtraction(attempt + 1, maxAttempts);
+            }
+          }
+        }, delay);
+      };
+      
+      // Start extraction attempts
+      attemptExtraction();
+    });
+    
+    this._iconsExtracted = true;
+  }
+
+  _renderIconPath(container, pathData) {
+    // Clear any existing content
+    container.innerHTML = '';
+    
+    if (pathData) {
+      // Create native SVG path element directly (no foreignObject!)
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', pathData);
+      path.setAttribute('fill', 'rgb(160, 160, 160)');
+      path.setAttribute('transform', 'scale(1)'); // 24x24 icon in 24x24 space
+      
+      container.appendChild(path);
+    } else {
+      // Fallback: render a simple circle as placeholder
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', '12');
+      circle.setAttribute('cy', '12');
+      circle.setAttribute('r', '8');
+      circle.setAttribute('fill', 'rgb(160, 160, 160)');
+      
+      container.appendChild(circle);
+    }
   }
 
   _drawFlow(flowLayer, from, to, power, isPositive) {
