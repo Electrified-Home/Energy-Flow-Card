@@ -1177,13 +1177,13 @@ class EnergyFlowCard extends HTMLElement {
 
   _renderCompactView(grid, load, production, battery) {
     // Calculate contributions to load
-    const productionToLoad = Math.min(Math.max(0, production), load);
-    const batteryToLoad = Math.min(Math.max(0, battery), Math.max(0, load - productionToLoad));
-    const gridToLoad = Math.max(0, load - productionToLoad - batteryToLoad);
+    const productionValue = Math.max(0, production);
+    const batteryToLoad = Math.min(Math.max(0, battery), Math.max(0, load - productionValue));
+    const gridToLoad = Math.max(0, load - productionValue - batteryToLoad);
 
     // Calculate percentages
     const total = load || 1; // Avoid division by zero
-    const productionPercent = (productionToLoad / total) * 100;
+    const productionPercent = (productionValue / total) * 100;
     const batteryPercent = (batteryToLoad / total) * 100;
     const gridPercent = (gridToLoad / total) * 100;
 
@@ -1334,12 +1334,12 @@ class EnergyFlowCard extends HTMLElement {
     if (productionSegment) {
       productionSegment.style.width = `${productionPercent}%`;
       const label = productionSegment.querySelector('.bar-segment-label');
-      if (label && productionToLoad > 0) {
-        label.textContent = `${Math.round(productionToLoad)}W`;
+      if (label && productionValue > 0) {
+        label.textContent = `${Math.round(productionValue)}W`;
       }
       // Calculate pixel width for visibility logic
       const pixelWidth = (productionPercent / 100) * (this.querySelector('.bar-container')?.offsetWidth || 0);
-      this._updateSegmentVisibility(productionSegment, pixelWidth, productionToLoad > 0);
+      this._updateSegmentVisibility(productionSegment, pixelWidth, productionValue > 0);
     }
 
     if (batterySegment) {
