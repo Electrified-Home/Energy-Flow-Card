@@ -6,11 +6,11 @@
   <title>Energy Flow Card Simulator</title>
   <style>
     :root {
-      --card-background-color: #fff;
-      --primary-background-color: #fafafa;
-      --divider-color: #e0e0e0;
-      --primary-text-color: #212121;
-      --secondary-text-color: #727272;
+      --card-background-color: #1c1c1c;
+      --primary-background-color: #111111;
+      --divider-color: #333333;
+      --primary-text-color: #e1e1e1;
+      --secondary-text-color: #9b9b9b;
       --success-color: #4caf50;
       --error-color: #f44336;
       --warning-color: #ff9800;
@@ -20,7 +20,7 @@
       font-family: 'Roboto', 'Noto', sans-serif;
       margin: 0;
       padding: 20px;
-      background: #f5f5f5;
+      background: #111111;
     }
 
     .container {
@@ -29,11 +29,11 @@
     }
 
     .controls {
-      background: white;
+      background: var(--card-background-color);
       padding: 20px;
       border-radius: 8px;
       margin-bottom: 20px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
 
     .control-group {
@@ -59,6 +59,8 @@
       border: 1px solid var(--divider-color);
       border-radius: 4px;
       font-size: 14px;
+      background: var(--primary-background-color);
+      color: var(--primary-text-color);
     }
 
     .presets {
@@ -75,6 +77,7 @@
       cursor: pointer;
       font-size: 14px;
       transition: all 0.2s;
+      color: var(--primary-text-color);
     }
 
     .preset-btn:hover {
@@ -83,9 +86,9 @@
 
     ha-card {
       display: block;
-      background: white;
+      background: var(--card-background-color);
       border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
 
     h1 {
@@ -96,6 +99,29 @@
     h3 {
       margin: 0 0 12px 0;
       color: var(--primary-text-color);
+    }
+
+    .card-wrapper {
+      position: relative;
+      width: 800px;
+      min-width: 400px;
+      max-width: 100%;
+      resize: both;
+      overflow: auto;
+      border: 2px dashed var(--divider-color);
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .card-wrapper::after {
+      content: '⇲';
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      font-size: 20px;
+      color: var(--secondary-text-color);
+      pointer-events: none;
+      padding: 4px;
     }
   </style>
 </head>
@@ -138,7 +164,9 @@
       </div>
     </div>
 
-    <div id="card-container"></div>
+    <div class="card-wrapper">
+      <div id="card-container"></div>
+    </div>
   </div>
 
   <script src="energy-flow-card.js"></script>
@@ -197,7 +225,9 @@
     document.getElementById('production-input').addEventListener('input', updateCard);
     document.getElementById('battery-input').addEventListener('input', updateCard);
 
-    // Scenario presets
+    // Scenario presets with tweening
+    let tweenInterval = null;
+    
     function setScenario(scenario) {
       const scenarios = {
         'sunny': { grid: -1500, load: 2000, production: 4000, battery: -500 },
@@ -210,11 +240,51 @@
       };
 
       if (scenarios[scenario]) {
-        document.getElementById('grid-input').value = scenarios[scenario].grid;
-        document.getElementById('load-input').value = scenarios[scenario].load;
-        document.getElementById('production-input').value = scenarios[scenario].production;
-        document.getElementById('battery-input').value = scenarios[scenario].battery;
-        updateCard();
+        // Clear any existing tween
+        if (tweenInterval) {
+          clearInterval(tweenInterval);
+        }
+        
+        const target = scenarios[scenario];
+        const start = {
+          grid: parseFloat(document.getElementById('grid-input').value) || 0,
+          load: parseFloat(document.getElementById('load-input').value) || 0,
+          production: parseFloat(document.getElementById('production-input').value) || 0,
+          battery: parseFloat(document.getElementById('battery-input').value) || 0
+        };
+        
+        const duration = 1500; // 1.5 seconds
+        const fps = 60;
+        const frames = (duration / 1000) * fps;
+        let currentFrame = 0;
+        
+        tweenInterval = setInterval(() => {
+          currentFrame++;
+          const progress = currentFrame / frames;
+          
+          // Ease-in-out cubic easing
+          const eased = progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+          
+          // Interpolate values
+          const grid = start.grid + (target.grid - start.grid) * eased;
+          const load = start.load + (target.load - start.load) * eased;
+          const production = start.production + (target.production - start.production) * eased;
+          const battery = start.battery + (target.battery - start.battery) * eased;
+          
+          document.getElementById('grid-input').value = Math.round(grid);
+          document.getElementById('load-input').value = Math.round(load);
+          document.getElementById('production-input').value = Math.round(production);
+          document.getElementById('battery-input').value = Math.round(battery);
+          
+          updateCard();
+          
+          if (currentFrame >= frames) {
+            clearInterval(tweenInterval);
+            tweenInterval = null;
+          }
+        }, 1000 / fps);
       }
     }
 
