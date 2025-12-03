@@ -10,7 +10,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     this._iconsExtracted = false; // Track if we've extracted icon paths yet
     
     // Animation speed multiplier (higher = faster dots)
-    this._speedMultiplier = 1.0;
+    this._speedMultiplier = 0.8;
     
     // Number of dots per flow
     this._dotsPerFlow = 3;
@@ -300,7 +300,18 @@ customElements.define("energy-flow-card", class extends HTMLElement {
   }
 
   _createMeterDefs() {
-    return ``;
+    return `
+      <!-- Glow filter for flow lines -->
+      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+        <feFlood flood-color="currentColor" flood-opacity="0.5" result="flood" />
+        <feComposite in="flood" in2="blur" operator="in" result="coloredBlur" />
+        <feMerge>
+          <feMergeNode in="coloredBlur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+    `;
   }
 
   _createSVGMeter(id, value, min, max, bidirectional, label, icon) {
@@ -784,7 +795,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     }
     
     // Dot radius: Grows proportionally with line width
-    const baseDotRadius = 1.5;
+    const baseDotRadius = 2.5;
     const minDotRadius = 3;
     const calculatedDotRadius = baseDotRadius * (strokeWidth / baseWidth);
     const dotRadius = Math.max(calculatedDotRadius, minDotRadius);
@@ -812,7 +823,17 @@ customElements.define("energy-flow-card", class extends HTMLElement {
       flowGroup.id = flowId;
       flowLayer.appendChild(flowGroup);
       
-      // Create path with d attribute set immediately (reuse d from velocity calculation)
+      // Create glow path (wider, behind, half opacity)
+      const glowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      glowPath.setAttribute('d', d);
+      glowPath.setAttribute('class', 'flow-line');
+      glowPath.setAttribute('stroke', color);
+      glowPath.setAttribute('stroke-opacity', opacity * 0.5);
+      glowPath.setAttribute('stroke-width', strokeWidth * 2);
+      glowPath.id = `glow-${flowId}`;
+      flowGroup.appendChild(glowPath);
+      
+      // Create main path on top
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', d);
       path.setAttribute('class', 'flow-line');
@@ -842,11 +863,20 @@ customElements.define("energy-flow-card", class extends HTMLElement {
       this._flowDots.set(flowId, dotStates);
     } else {
       // Update existing flow
-      const path = flowGroup.querySelector('path');
-      if (path) {
+      const glowPath = flowGroup.querySelector(`#glow-${flowId}`);
+      const path = flowGroup.querySelector(`#path-${flowId}`);
+      
+      if (glowPath && path) {
         const controlX = (from.x + to.x) / 2;
         const controlY = (from.y + to.y) / 2;
         const d = `M ${from.x},${from.y} Q ${controlX},${controlY} ${to.x},${to.y}`;
+        
+        // Update glow path
+        glowPath.setAttribute('d', d);
+        glowPath.setAttribute('stroke-opacity', opacity * 0.5);
+        glowPath.setAttribute('stroke-width', strokeWidth * 2);
+        
+        // Update main path
         path.setAttribute('d', d);
         path.setAttribute('stroke-opacity', opacity);
         path.setAttribute('stroke-width', strokeWidth);
