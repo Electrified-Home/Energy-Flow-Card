@@ -311,6 +311,19 @@ customElements.define("energy-flow-card", class extends HTMLElement {
           <feMergeNode in="SourceGraphic" />
         </feMerge>
       </filter>
+      
+      <!-- Drop shadow filter for meters -->
+      <filter id="drop-shadow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur" />
+        <feOffset in="blur" dx="0" dy="2" result="offsetBlur" />
+        <feComponentTransfer in="offsetBlur" result="shadow">
+          <feFuncA type="linear" slope="0.4" />
+        </feComponentTransfer>
+        <feMerge>
+          <feMergeNode in="shadow" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
     `;
   }
 
@@ -388,7 +401,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
           </clipPath>
         </defs>
         
-        <rect x="0" y="0" width="${boxWidth}" height="${boxHeight}" rx="${boxRadius}" ry="${boxRadius}" fill="rgb(40, 40, 40)" />
+        <rect x="0" y="0" width="${boxWidth}" height="${boxHeight}" rx="${boxRadius}" ry="${boxRadius}" fill="rgb(40, 40, 40)" filter="url(#drop-shadow)" />
         
         <g clip-path="url(#clip-${id}-local)">
           <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="rgb(70, 70, 70)" />
