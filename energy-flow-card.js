@@ -735,12 +735,19 @@ class EnergyFlowCard extends HTMLElement {
       remainingLoad -= gridToLoad;
     }
     
-    // 6. If grid is importing and battery charging, grid can charge battery
-    if (gridFlow > 0 && batteryFlow < 0) {
+    // 6. If battery is charging and not fully covered by production, grid must supply the rest
+    if (batteryFlow < 0 && gridFlow > 0) {
       const batteryNeed = Math.abs(batteryFlow) - productionToBattery;
       if (batteryNeed > 0) {
         gridToBattery = Math.min(gridFlow - gridToLoad, batteryNeed);
       }
+    }
+    
+    // Calculate energy balance overflow (if production + grid > load, excess must be going to battery)
+    const batteryOverflow = productionFlow + Math.max(0, gridFlow) - loadDemand;
+    if (batteryOverflow > 0) {
+      // Constrain grid-to-battery flow by the energy balance
+      gridToBattery = Math.max(gridToBattery, batteryOverflow - productionToBattery);
     }
     
     // Define all possible flows with colors
@@ -748,18 +755,19 @@ class EnergyFlowCard extends HTMLElement {
     // Yellow: Warning (exporting to grid, grid charging battery)
     // Red: Bad (importing from grid to load)
     const threshold = 0;
+    const batteryToLoadThreshold = 10;
     const flows = [
-      { id: 'production-to-load', from: productionPos, to: loadPos, power: productionToLoad, color: '#4caf50' },
-      { id: 'production-to-battery', from: productionPos, to: batteryPos, power: productionToBattery, color: '#4caf50' },
-      { id: 'battery-to-load', from: batteryPos, to: loadPos, power: batteryToLoad, color: '#4caf50' },
-      { id: 'grid-to-load', from: gridPos, to: loadPos, power: gridToLoad, color: '#f44336' },
-      { id: 'grid-to-battery', from: gridPos, to: batteryPos, power: gridToBattery, color: '#ffeb3b' },
-      { id: 'production-to-grid', from: productionPos, to: gridPos, power: productionToGrid, color: '#ffeb3b' }
+      { id: 'production-to-load', from: productionPos, to: loadPos, power: productionToLoad, color: '#4caf50', threshold },
+      { id: 'production-to-battery', from: productionPos, to: batteryPos, power: productionToBattery, color: '#4caf50', threshold },
+      { id: 'battery-to-load', from: batteryPos, to: loadPos, power: batteryToLoad, color: '#4caf50', threshold: batteryToLoadThreshold },
+      { id: 'grid-to-load', from: gridPos, to: loadPos, power: gridToLoad, color: '#f44336', threshold },
+      { id: 'grid-to-battery', from: gridPos, to: batteryPos, power: gridToBattery, color: '#ffeb3b', threshold },
+      { id: 'production-to-grid', from: productionPos, to: gridPos, power: productionToGrid, color: '#ffeb3b', threshold }
     ];
     
     // Update or create flows
     flows.forEach(flow => {
-      if (flow.power > threshold) {
+      if (flow.power > flow.threshold) {
         this._updateOrCreateFlow(flowLayer, flow.id, flow.from, flow.to, flow.power, flow.color);
       } else {
         this._fadeOutFlow(flowLayer, flow.id);
