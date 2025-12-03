@@ -197,12 +197,6 @@ customElements.define("energy-flow-card", class extends HTMLElement {
               from { offset-distance: 0%; }
               to { offset-distance: 100%; }
             }
-            .meter-group {
-              transition: filter 0.8s ease-in-out;
-            }
-            .meter-group.zero {
-              filter: brightness(0.7);
-            }
           </style>
           <div class="svg-wrapper">
             <svg class="energy-flow-svg" viewBox="0 0 ${this._canvasWidth} ${this._canvasHeight}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
@@ -401,6 +395,8 @@ customElements.define("energy-flow-card", class extends HTMLElement {
         <text id="value-${id}" x="${centerX}" y="${valueY}" text-anchor="middle" font-size="${fontSize}" fill="rgb(255, 255, 255)" font-weight="600">${value.toFixed(0)}${value < 0 ? '\u00A0' : ''}</text>
         
         <text x="${centerX}" y="${unitsY}" text-anchor="middle" font-size="${unitsFontSize}" fill="rgb(160, 160, 160)" font-weight="400" letter-spacing="0.5">WATTS</text>
+        
+        <rect id="dimmer-${id}" x="0" y="0" width="${boxWidth}" height="${boxHeight}" rx="${boxRadius}" ry="${boxRadius}" fill="black" opacity="0" pointer-events="none" style="transition: opacity 0.8s ease-in-out;" />
       </g>
     `;
   }
@@ -439,11 +435,11 @@ customElements.define("energy-flow-card", class extends HTMLElement {
   }
 
   _updateMeterDimming(id, value) {
-    const meterGroup = this.querySelector(`#${id}-meter`);
-    if (meterGroup) {
+    const dimmer = this.querySelector(`#dimmer-${id}`);
+    if (dimmer) {
       // Consider value at zero if it's within ±0.5W
       const isZero = Math.abs(value) < 0.5;
-      meterGroup.classList.toggle('zero', isZero);
+      dimmer.setAttribute('opacity', isZero ? '0.3' : '0');
     }
   }
 
