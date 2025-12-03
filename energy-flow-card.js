@@ -1,13 +1,299 @@
-customElements.define("energy-flow-card", class extends HTMLElement {
+// Meter class: Fully self-contained meter with its own rendering and animation
+class Meter {
+  constructor(id, value, min, max, bidirectional, label, icon, invertView = false, parentElement = null) {
+    this.id = id;
+    this._value = value;
+    this.min = min;
+    this.max = max;
+    this.bidirectional = bidirectional;
+    this.label = label;
+    this.icon = icon;
+    this._invertView = invertView;
+    this.parentElement = parentElement;
+    
+    // Meter geometry constants
+    this.radius = 50;
+    this.boxWidth = 120;
+    this.boxHeight = 135;
+    this.boxRadius = 16;
+    this.centerX = this.boxWidth / 2;
+    this.centerY = this.radius + 25;
+    this.offsetX = -this.centerX;
+    this.offsetY = -this.centerY;
+    
+    // Needle animation state
+    this.needleState = { target: 0, current: 0, ghost: 0 };
+    this._lastAnimationTime = null;
+    this._animationFrameId = null;
+    
+    // Calculate initial needle angle
+    this._updateNeedleAngle();
+  }
+  
+  get value() {
+    return this._value;
+  }
+  
+  set value(newValue) {
+    if (this._value === newValue) return; // No change, skip update
+    
+    this._value = newValue;
+    this._updateNeedleAngle();
+    
+    // Update value text immediately
+    if (this.parentElement) {
+      const valueText = this.parentElement.querySelector(`#value-${this.id}`);
+      const displayValue = this.displayValue;
+      if (valueText) {
+        valueText.textContent = displayValue.toFixed(0) + (displayValue < 0 ? '\u00A0' : '');
+      }
+      
+      // Update dimming
+      this.updateDimming();
+    }
+  }
+  
+  get invertView() {
+    return this._invertView;
+  }
+  
+  set invertView(newInvertView) {
+    if (this._invertView === newInvertView) return; // No change, skip update
+    
+    this._invertView = newInvertView;
+    this._updateNeedleAngle();
+    
+    // Update value text immediately (displayValue depends on invertView)
+    if (this.parentElement) {
+      const valueText = this.parentElement.querySelector(`#value-${this.id}`);
+      const displayValue = this.displayValue;
+      if (valueText) {
+        valueText.textContent = displayValue.toFixed(0) + (displayValue < 0 ? '\u00A0' : '');
+      }
+    }
+  }
+  
+  get displayValue() {
+    return this._invertView ? -this._value : this._value;
+  }
+  
+  _updateNeedleAngle() {
+    let percentage, angle;
+    const displayValue = this.displayValue;
+    
+    if (this.bidirectional) {
+      const range = this.max - this.min;
+      percentage = Math.min(Math.max((displayValue - this.min) / range, 0), 1);
+      angle = 180 - (percentage * 180);
+    } else {
+      percentage = Math.min(Math.max(displayValue / this.max, 0), 1);
+      angle = 180 - (percentage * 180);
+    }
+    
+    this.needleState.target = angle;
+  }
+  
+  updateDimming() {
+    if (!this.parentElement) return;
+    
+    const dimmer = this.parentElement.querySelector(`#dimmer-${this.id}`);
+    if (dimmer) {
+      const isZero = Math.abs(this.value) < 0.5;
+      dimmer.setAttribute('opacity', isZero ? '0.3' : '0');
+    }
+  }
+  
+  startAnimation() {
+    if (this._animationFrameId) return; // Already animating
+    
+    const animate = (timestamp) => {
+      if (!this._lastAnimationTime) {
+        this._lastAnimationTime = timestamp;
+      }
+      
+      const deltaTime = timestamp - this._lastAnimationTime;
+      this._lastAnimationTime = timestamp;
+      
+      if (!this.parentElement) {
+        this._animationFrameId = null;
+        return;
+      }
+      
+      const needleLength = this.radius - 5;
+      
+      // Smoothly interpolate main needle (fast response)
+      const mainLerpFactor = Math.min(deltaTime / 150, 1); // 150ms response time
+      this.needleState.current += (this.needleState.target - this.needleState.current) * mainLerpFactor;
+      
+      // Ghost needle lags behind (slower response)
+      const ghostLerpFactor = Math.min(deltaTime / 400, 1); // 400ms response time
+      this.needleState.ghost += (this.needleState.current - this.needleState.ghost) * ghostLerpFactor;
+      
+      // Clamp ghost to maximum 10 degrees behind main needle
+      const maxLag = 10;
+      if (this.needleState.ghost < this.needleState.current - maxLag) {
+        this.needleState.ghost = this.needleState.current - maxLag;
+      } else if (this.needleState.ghost > this.needleState.current + maxLag) {
+        this.needleState.ghost = this.needleState.current + maxLag;
+      }
+      
+      // Update main needle
+      const needle = this.parentElement.querySelector(`#needle-${this.id}`);
+      if (needle) {
+        const needleRad = (this.needleState.current * Math.PI) / 180;
+        const needleX = this.centerX + needleLength * Math.cos(needleRad);
+        const needleY = this.centerY - needleLength * Math.sin(needleRad);
+        needle.setAttribute('x2', needleX);
+        needle.setAttribute('y2', needleY);
+      }
+      
+      // Update ghost needle
+      const ghostNeedle = this.parentElement.querySelector(`#ghost-needle-${this.id}`);
+      if (ghostNeedle) {
+        const ghostRad = (this.needleState.ghost * Math.PI) / 180;
+        const ghostX = this.centerX + needleLength * Math.cos(ghostRad);
+        const ghostY = this.centerY - needleLength * Math.sin(ghostRad);
+        ghostNeedle.setAttribute('x2', ghostX);
+        ghostNeedle.setAttribute('y2', ghostY);
+      }
+      
+      this._animationFrameId = requestAnimationFrame(animate);
+    };
+    
+    this._animationFrameId = requestAnimationFrame(animate);
+  }
+  
+  stopAnimation() {
+    if (this._animationFrameId) {
+      cancelAnimationFrame(this._animationFrameId);
+      this._animationFrameId = null;
+      this._lastAnimationTime = null;
+    }
+  }
+  
+  createSVG() {
+    const displayValue = this.displayValue;
+    
+    // Calculate percentage and angle for needle
+    let percentage, angle;
+    if (this.bidirectional) {
+      const range = this.max - this.min;
+      percentage = Math.min(Math.max((displayValue - this.min) / range, 0), 1);
+      angle = 180 - (percentage * 180);
+    } else {
+      percentage = Math.min(Math.max(displayValue / this.max, 0), 1);
+      angle = 180 - (percentage * 180);
+    }
+    
+    // Initialize needle state
+    this.needleState.target = angle;
+    this.needleState.current = angle;
+    this.needleState.ghost = angle;
+    
+    // Generate tick marks
+    const ticks = this.bidirectional ? [this.min, 0, this.max] : [0, this.max/2, this.max];
+    const tickMarks = ticks.map((tickValue) => {
+      const tickPercentage = this.bidirectional 
+        ? (tickValue - this.min) / (this.max - this.min)
+        : tickValue / this.max;
+      const tickAngle = 180 - (tickPercentage * 180);
+      const tickRad = (tickAngle * Math.PI) / 180;
+      const tickStartR = this.radius;
+      const tickEndR = this.radius - 8;
+      
+      const x1 = this.centerX + tickStartR * Math.cos(tickRad);
+      const y1 = this.centerY - tickStartR * Math.sin(tickRad);
+      const x2 = this.centerX + tickEndR * Math.cos(tickRad);
+      const y2 = this.centerY - tickEndR * Math.sin(tickRad);
+      
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgb(160, 160, 160)" stroke-width="2" />`;
+    }).join('');
+    
+    // Zero line
+    const zeroPercentage = this.bidirectional ? (0 - this.min) / (this.max - this.min) : 0;
+    const zeroAngle = 180 - (zeroPercentage * 180);
+    const zeroRad = (zeroAngle * Math.PI) / 180;
+    const zeroX1 = this.centerX;
+    const zeroY1 = this.centerY;
+    const zeroX2 = this.centerX + this.radius * Math.cos(zeroRad);
+    const zeroY2 = this.centerY - this.radius * Math.sin(zeroRad);
+    const zeroLine = `<line x1="${zeroX1}" y1="${zeroY1}" x2="${zeroX2}" y2="${zeroY2}" stroke="rgb(100, 100, 100)" stroke-width="2" />`;
+    
+    // Needle position
+    const needleRad = (angle * Math.PI) / 180;
+    const needleLength = this.radius - 5;
+    const needleX = this.centerX + needleLength * Math.cos(needleRad);
+    const needleY = this.centerY - needleLength * Math.sin(needleRad);
+    
+    const clipHeight = this.centerY + 5;
+    const valueY = this.centerY + (this.radius * 0.5);
+    const unitsY = this.centerY + (this.radius * 0.7);
+    const fontSize = 16;
+    const unitsFontSize = 8;
+    const labelFontSize = 12;
+    
+    return `
+      <g transform="translate(${this.offsetX}, ${this.offsetY})">
+        <defs>
+          <clipPath id="clip-${this.id}-local">
+            <rect x="0" y="0" width="${this.boxWidth}" height="${clipHeight + 2}" />
+          </clipPath>
+        </defs>
+        
+        <rect x="0" y="0" width="${this.boxWidth}" height="${this.boxHeight}" rx="${this.boxRadius}" ry="${this.boxRadius}" fill="rgb(40, 40, 40)" filter="url(#drop-shadow)" />
+        
+        <g clip-path="url(#clip-${this.id}-local)">
+          <circle cx="${this.centerX}" cy="${this.centerY}" r="${this.radius}" fill="rgb(70, 70, 70)" />
+          ${zeroLine}
+        </g>
+        
+        ${tickMarks}
+        
+        <circle cx="${this.centerX}" cy="${this.centerY}" r="${this.radius}" fill="none" stroke="rgb(160, 160, 160)" stroke-width="2" />
+        
+        <text x="${this.centerX}" y="15" text-anchor="middle" font-size="${labelFontSize}" fill="rgb(255, 255, 255)" font-weight="500">${this.label}</text>
+        
+        <!-- Icon rendered via foreignObject (for extraction source) -->
+        <foreignObject id="icon-source-${this.id}" x="${this.centerX - 18}" y="${this.centerY - 42}" width="36" height="36">
+          <div xmlns="http://www.w3.org/1999/xhtml" style="width: 36px; height: 36px;">
+            <ha-icon icon="${this.icon}" style="--mdc-icon-size: 36px; color: rgb(160, 160, 160);"></ha-icon>
+          </div>
+        </foreignObject>
+        
+        <!-- Icon rendered as native SVG path (populated after extraction, will overlay) -->
+        <g id="icon-display-${this.id}" transform="translate(${this.centerX - 18}, ${this.centerY - 42}) scale(1.5)">
+          <!-- Path will be inserted here by _extractIconPaths -->
+        </g>
+        
+        <line id="ghost-needle-${this.id}" x1="${this.centerX}" y1="${this.centerY}" x2="${needleX}" y2="${needleY}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" opacity="0.3" />
+        
+        <line id="needle-${this.id}" x1="${this.centerX}" y1="${this.centerY}" x2="${needleX}" y2="${needleY}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" />
+        
+        <circle cx="${this.centerX}" cy="${this.centerY}" r="5" fill="rgb(255, 255, 255)" />
+        
+        <text id="value-${this.id}" x="${this.centerX}" y="${valueY}" text-anchor="middle" font-size="${fontSize}" fill="rgb(255, 255, 255)" font-weight="600">${displayValue.toFixed(0)}${displayValue < 0 ? '\u00A0' : ''}</text>
+        
+        <text x="${this.centerX}" y="${unitsY}" text-anchor="middle" font-size="${unitsFontSize}" fill="rgb(160, 160, 160)" font-weight="400" letter-spacing="0.5">WATTS</text>
+        
+        <rect id="dimmer-${this.id}" x="0" y="0" width="${this.boxWidth}" height="${this.boxHeight}" rx="${this.boxRadius}" ry="${this.boxRadius}" fill="black" opacity="0" pointer-events="none" style="transition: opacity 0.8s ease-in-out;" />
+      </g>
+    `;
+  }
+}
+
+// Main card class
+class EnergyFlowCard extends HTMLElement {
   constructor() {
     super();
     this._resizeObserver = null;
     this._animationFrameId = null;
     this._flowDots = new Map(); // Store dot states: flowId -> array of { progress: 0-1, velocity: units/sec }
     this._lastAnimationTime = null;
-    this._needleAngles = new Map(); // Store needle angles: id -> { target: angle, current: angle, ghost: angle }
     this._iconCache = new Map(); // Cache extracted icon paths: icon -> SVG path data
     this._iconsExtracted = false; // Track if we've extracted icon paths yet
+    
+    // Meter instances
+    this._meters = new Map(); // id -> Meter instance
     
     // Animation speed multiplier (higher = faster dots)
     this._speedMultiplier = 0.8;
@@ -90,8 +376,8 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     }
     this._resizeObserver.observe(this);
     
-    // Start animation loop
-    this._startAnimationLoop();
+    // Start flow animation loop
+    this._startFlowAnimationLoop();
   }
 
   disconnectedCallback() {
@@ -100,7 +386,10 @@ customElements.define("energy-flow-card", class extends HTMLElement {
       this._resizeObserver = null;
     }
     
-    // Stop animation loop
+    // Stop all meter animations
+    this._meters.forEach(meter => meter.stopAnimation());
+    
+    // Stop flow animation loop
     if (this._animationFrameId) {
       cancelAnimationFrame(this._animationFrameId);
       this._animationFrameId = null;
@@ -147,6 +436,22 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     // Only do full render if structure doesn't exist
     if (!this.querySelector('.energy-flow-svg')) {
       this._iconsExtracted = false; // Reset flag on full render
+      
+      // Create meter instances
+      const productionMeter = new Meter('production', production, 0, productionMax, false, 
+        this._getDisplayName('production_name', 'production_entity', 'Production'),
+        this._getIcon('production_icon', 'production_entity', 'mdi:solar-power'));
+      const batteryMeter = new Meter('battery', battery, batteryMin, batteryMax, true,
+        this._getDisplayName('battery_name', 'battery_entity', 'Battery'),
+        this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'),
+        this._config.invert_battery_view);
+      const gridMeter = new Meter('grid', grid, gridMin, gridMax, true,
+        this._getDisplayName('grid_name', 'grid_entity', 'Grid'),
+        this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower'));
+      const loadMeter = new Meter('load', load, 0, loadMax, false,
+        this._getDisplayName('load_name', 'load_entity', 'Load'),
+        this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt'));
+      
       this.innerHTML = `
         <ha-card>
           <style>
@@ -213,39 +518,66 @@ customElements.define("energy-flow-card", class extends HTMLElement {
             
             <!-- Production Meter (top left) -->
             <g id="production-meter" class="meter-group" transform="translate(${this._meterPositions.production.x}, ${this._meterPositions.production.y})">
-              ${this._createSVGMeter('production', production, 0, productionMax, false, this._getDisplayName('production_name', 'production_entity', 'Production'), this._getIcon('production_icon', 'production_entity', 'mdi:solar-power'))}
+              ${productionMeter.createSVG()}
             </g>
             
             <!-- Battery Meter (middle left, offset right) -->
             <g id="battery-meter" class="meter-group" transform="translate(${this._meterPositions.battery.x}, ${this._meterPositions.battery.y})">
-              ${this._createSVGMeter('battery', battery, batteryMin, batteryMax, true, this._getDisplayName('battery_name', 'battery_entity', 'Battery'), this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'), this._config.invert_battery_view)}
+              ${batteryMeter.createSVG()}
             </g>
             
             <!-- Grid Meter (bottom left) -->
             <g id="grid-meter" class="meter-group" transform="translate(${this._meterPositions.grid.x}, ${this._meterPositions.grid.y})">
-              ${this._createSVGMeter('grid', grid, gridMin, gridMax, true, this._getDisplayName('grid_name', 'grid_entity', 'Grid'), this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower'))}
+              ${gridMeter.createSVG()}
             </g>
             
             <!-- Load Meter (right, 2x size) -->
             <g id="load-meter" class="meter-group" transform="translate(${this._meterPositions.load.x}, ${this._meterPositions.load.y}) scale(2)">
-              ${this._createSVGMeter('load', load, 0, loadMax, false, this._getDisplayName('load_name', 'load_entity', 'Load'), this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt'))}
+              ${loadMeter.createSVG()}
             </g>
           </svg>
           </div>
         </ha-card>
       `;
+      
+      // Store meter instances with reference to their parent elements
+      requestAnimationFrame(() => {
+        productionMeter.parentElement = this.querySelector('#production-meter');
+        batteryMeter.parentElement = this.querySelector('#battery-meter');
+        gridMeter.parentElement = this.querySelector('#grid-meter');
+        loadMeter.parentElement = this.querySelector('#load-meter');
+        
+        this._meters.set('production', productionMeter);
+        this._meters.set('battery', batteryMeter);
+        this._meters.set('grid', gridMeter);
+        this._meters.set('load', loadMeter);
+        
+        // Start each meter's animation
+        productionMeter.startAnimation();
+        batteryMeter.startAnimation();
+        gridMeter.startAnimation();
+        loadMeter.startAnimation();
+        
+        // Update initial dimming
+        productionMeter.updateDimming();
+        batteryMeter.updateDimming();
+        gridMeter.updateDimming();
+        loadMeter.updateDimming();
+      });
     } else {
       // Update existing meters
-      this._updateMeter('production', production, 0, productionMax, false, this._getDisplayName('production_name', 'production_entity', 'Production'), this._getIcon('production_icon', 'production_entity', 'mdi:solar-power'));
-      this._updateMeter('battery', battery, batteryMin, batteryMax, true, this._getDisplayName('battery_name', 'battery_entity', 'Battery'), this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'), this._config.invert_battery_view);
-      this._updateMeter('grid', grid, gridMin, gridMax, true, this._getDisplayName('grid_name', 'grid_entity', 'Grid'), this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower'));
-      this._updateMeter('load', load, 0, loadMax, false, this._getDisplayName('load_name', 'load_entity', 'Load'), this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt'));
+      const productionMeter = this._meters.get('production');
+      const batteryMeter = this._meters.get('battery');
+      const gridMeter = this._meters.get('grid');
+      const loadMeter = this._meters.get('load');
       
-      // Update meter dimming based on zero values
-      this._updateMeterDimming('production', production);
-      this._updateMeterDimming('battery', battery);
-      this._updateMeterDimming('grid', grid);
-      this._updateMeterDimming('load', load);
+      if (productionMeter) productionMeter.value = production;
+      if (batteryMeter) {
+        batteryMeter.invertView = this._config.invert_battery_view;
+        batteryMeter.value = battery;
+      }
+      if (gridMeter) gridMeter.value = grid;
+      if (loadMeter) loadMeter.value = load;
     }
 
     // Store values for resize handler and draw flows
@@ -325,278 +657,6 @@ customElements.define("energy-flow-card", class extends HTMLElement {
           <feMergeNode in="SourceGraphic" />
         </feMerge>
       </filter>
-    `;
-  }
-
-  _createSVGMeter(id, value, min, max, bidirectional, label, icon, invertView = false) {
-    // Invert view if requested (display only, doesn't affect interpretation)
-    const displayValue = invertView ? -value : value;
-    
-    const radius = 50;
-    const boxWidth = 120;
-    const boxHeight = 135;
-    const boxRadius = 16;
-    const centerX = boxWidth / 2;
-    const centerY = radius + 25;
-    
-    // Offset to center the circle at origin (0,0)
-    const offsetX = -centerX;
-    const offsetY = -centerY;
-    
-    // Calculate percentage and angle for needle (use displayValue for inverted view)
-    let percentage, angle;
-    
-    if (bidirectional) {
-      const range = max - min;
-      percentage = Math.min(Math.max((displayValue - min) / range, 0), 1);
-      angle = 180 - (percentage * 180);
-    } else {
-      percentage = Math.min(Math.max(displayValue / max, 0), 1);
-      angle = 180 - (percentage * 180);
-    }
-    
-    // Generate tick marks
-    const ticks = bidirectional ? [min, 0, max] : [0, max/2, max];
-    const tickMarks = ticks.map((tickValue) => {
-      const tickPercentage = bidirectional 
-        ? (tickValue - min) / (max - min)
-        : tickValue / max;
-      const tickAngle = 180 - (tickPercentage * 180);
-      const tickRad = (tickAngle * Math.PI) / 180;
-      const tickStartR = radius;
-      const tickEndR = radius - 8;
-      
-      const x1 = centerX + tickStartR * Math.cos(tickRad);
-      const y1 = centerY - tickStartR * Math.sin(tickRad);
-      const x2 = centerX + tickEndR * Math.cos(tickRad);
-      const y2 = centerY - tickEndR * Math.sin(tickRad);
-      
-      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgb(160, 160, 160)" stroke-width="2" />`;
-    }).join('');
-    
-    // Zero line (always present)
-    const zeroPercentage = bidirectional ? (0 - min) / (max - min) : 0;
-    const zeroAngle = 180 - (zeroPercentage * 180);
-    const zeroRad = (zeroAngle * Math.PI) / 180;
-    const zeroX1 = centerX;
-    const zeroY1 = centerY;
-    const zeroX2 = centerX + radius * Math.cos(zeroRad);
-    const zeroY2 = centerY - radius * Math.sin(zeroRad);
-    const zeroLine = `<line x1="${zeroX1}" y1="${zeroY1}" x2="${zeroX2}" y2="${zeroY2}" stroke="rgb(100, 100, 100)" stroke-width="2" />`;
-    
-    // Needle position
-    const needleRad = (angle * Math.PI) / 180;
-    const needleLength = radius - 5;
-    const needleX = centerX + needleLength * Math.cos(needleRad);
-    const needleY = centerY - needleLength * Math.sin(needleRad);
-    
-    const clipHeight = centerY + 5;
-    const valueY = centerY + (radius * 0.5);
-    const unitsY = centerY + (radius * 0.7);
-    const fontSize = 16;
-    const unitsFontSize = 8;
-    const labelFontSize = 12;
-    
-    return `
-      <g transform="translate(${offsetX}, ${offsetY})">
-        <defs>
-          <clipPath id="clip-${id}-local">
-            <rect x="0" y="0" width="${boxWidth}" height="${clipHeight + 2}" />
-          </clipPath>
-        </defs>
-        
-        <rect x="0" y="0" width="${boxWidth}" height="${boxHeight}" rx="${boxRadius}" ry="${boxRadius}" fill="rgb(40, 40, 40)" filter="url(#drop-shadow)" />
-        
-        <g clip-path="url(#clip-${id}-local)">
-          <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="rgb(70, 70, 70)" />
-          ${zeroLine}
-        </g>
-        
-        ${tickMarks}
-        
-        <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="none" stroke="rgb(160, 160, 160)" stroke-width="2" />
-        
-        <text x="${centerX}" y="15" text-anchor="middle" font-size="${labelFontSize}" fill="rgb(255, 255, 255)" font-weight="500">${label}</text>
-        
-        <!-- Icon rendered via foreignObject (for extraction source) -->
-        <foreignObject id="icon-source-${id}" x="${centerX - 18}" y="${centerY - 42}" width="36" height="36">
-          <div xmlns="http://www.w3.org/1999/xhtml" style="width: 36px; height: 36px;">
-            <ha-icon icon="${icon}" style="--mdc-icon-size: 36px; color: rgb(160, 160, 160);"></ha-icon>
-          </div>
-        </foreignObject>
-        
-        <!-- Icon rendered as native SVG path (populated after extraction, will overlay) -->
-        <g id="icon-display-${id}" transform="translate(${centerX - 18}, ${centerY - 42}) scale(1.5)">
-          <!-- Path will be inserted here by _extractIconPaths -->
-        </g>
-        
-        <line id="ghost-needle-${id}" x1="${centerX}" y1="${centerY}" x2="${needleX}" y2="${needleY}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" opacity="0.3" />
-        
-        <line id="needle-${id}" x1="${centerX}" y1="${centerY}" x2="${needleX}" y2="${needleY}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" />
-        
-        <circle cx="${centerX}" cy="${centerY}" r="5" fill="rgb(255, 255, 255)" />
-        
-        <text id="value-${id}" x="${centerX}" y="${valueY}" text-anchor="middle" font-size="${fontSize}" fill="rgb(255, 255, 255)" font-weight="600">${displayValue.toFixed(0)}${displayValue < 0 ? '\u00A0' : ''}</text>
-        
-        <text x="${centerX}" y="${unitsY}" text-anchor="middle" font-size="${unitsFontSize}" fill="rgb(160, 160, 160)" font-weight="400" letter-spacing="0.5">WATTS</text>
-        
-        <rect id="dimmer-${id}" x="0" y="0" width="${boxWidth}" height="${boxHeight}" rx="${boxRadius}" ry="${boxRadius}" fill="black" opacity="0" pointer-events="none" style="transition: opacity 0.8s ease-in-out;" />
-      </g>
-    `;
-  }
-
-  _updateMeter(id, value, min, max, bidirectional, label, icon, invertView = false) {
-    // Invert view if requested (display only, doesn't affect interpretation)
-    const displayValue = invertView ? -value : value;
-    
-    const radius = 50;
-    const boxWidth = 120;
-    const centerX = boxWidth / 2;
-    const centerY = radius + 25;
-    
-    // Calculate percentage and angle for needle (use displayValue for inverted view)
-    let percentage, angle;
-    
-    if (bidirectional) {
-      const range = max - min;
-      percentage = Math.min(Math.max((displayValue - min) / range, 0), 1);
-      angle = 180 - (percentage * 180);
-    } else {
-      percentage = Math.min(Math.max(displayValue / max, 0), 1);
-      angle = 180 - (percentage * 180);
-    }
-    
-    // Initialize or update needle angle state
-    if (!this._needleAngles.has(id)) {
-      this._needleAngles.set(id, { target: angle, current: angle, ghost: angle });
-    } else {
-      const state = this._needleAngles.get(id);
-      state.target = angle;
-    }
-    
-    // Update value text
-    const valueText = this.querySelector(`#value-${id}`);
-    if (valueText) {
-      valueText.textContent = displayValue.toFixed(0) + (displayValue < 0 ? '\u00A0' : '');
-    }
-  }
-
-  _updateMeterDimming(id, value) {
-    const dimmer = this.querySelector(`#dimmer-${id}`);
-    if (dimmer) {
-      // Consider value at zero if it's within ±0.5W
-      const isZero = Math.abs(value) < 0.5;
-      dimmer.setAttribute('opacity', isZero ? '0.3' : '0');
-    }
-  }
-
-  _createAnalogMeter(id, value, min, max, bidirectional, isHub, label, icon) {
-    // Classic volt-meter style: full semicircle (180°) on top half
-    const radius = isHub ? 65 : 50;
-    const padding = 5; // Minimal padding
-    const labelHeight = 20; // Space for label at top
-    const width = (radius * 2) + (padding * 2);
-    const centerX = radius + padding;
-    const centerY = radius + padding + labelHeight; // Offset circle down to make room for label
-    const fullHeight = radius * 2 + (padding * 2) + labelHeight;
-    const startAngle = 180;  // degrees (left side, 9 o'clock)
-    const endAngle = 0;      // degrees (right side, 3 o'clock)
-    const totalAngle = 180;  // Full semicircle
-    
-    // Calculate percentage and angle for needle
-    let percentage, angle, isNegative;
-    
-    if (bidirectional) {
-      // Bidirectional meter (grid, battery): min on left, 0 at top, max on right
-      const range = max - min;
-      percentage = (value - min) / range;
-      angle = startAngle - (percentage * totalAngle); // 180° down to 0°
-      isNegative = value < 0;
-    } else {
-      // Unidirectional meter (production, load): 0 on left, max on right
-      percentage = Math.min(Math.max(value / max, 0), 1);
-      angle = startAngle - (percentage * totalAngle); // 180° down to 0°
-      isNegative = false;
-    }
-    
-    // Generate only 3 tick marks: min, zero/mid, max
-    const ticks = bidirectional ? [min, 0, max] : [0, max/2, max];
-    
-    const tickMarks = ticks.map((tickValue) => {
-      const tickPercentage = bidirectional 
-        ? (tickValue - min) / (max - min)
-        : tickValue / max;
-      const tickAngle = startAngle - (tickPercentage * totalAngle);
-      const tickRad = (tickAngle * Math.PI) / 180;
-      const tickStartR = radius;
-      const tickEndR = radius - 8;
-      
-      const x1 = centerX + tickStartR * Math.cos(tickRad);
-      const y1 = centerY - tickStartR * Math.sin(tickRad);
-      const x2 = centerX + tickEndR * Math.cos(tickRad);
-      const y2 = centerY - tickEndR * Math.sin(tickRad);
-      
-      return `<line class="meter-tick" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
-    }).join('');
-    
-    // Needle position
-    const needleRad = (angle * Math.PI) / 180;
-    const needleLength = radius - 5;
-    const needleX = centerX + needleLength * Math.cos(needleRad);
-    const needleY = centerY - needleLength * Math.sin(needleRad);
-    
-    // Background: full circle (gray)
-    const circleRadius = radius;
-    
-    // Clip height: just under the center point
-    const clipHeight = centerY + 5;
-    
-    // Text positioning in lower half (relative to circle size)
-    const valueY = centerY + (radius * 0.5); // Value number position
-    const unitsY = centerY + (radius * 0.7); // "WATTS" below the value
-    const fontSize = isHub ? 20 : 16;
-    const unitsFontSize = isHub ? 10 : 8;
-    
-    // Label positioning above the meter
-    const labelY = 8; // Near top edge
-    const labelFontSize = isHub ? 14 : 12;
-    
-    return `
-      <svg class="analog-meter" viewBox="0 0 ${width} ${fullHeight}" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <clipPath id="clip-${id}">
-            <rect x="0" y="0" width="${width}" height="${clipHeight}" />
-          </clipPath>
-        </defs>
-        
-        <!-- Clipped content (background fill only) -->
-        <g clip-path="url(#clip-${id})">
-          <circle class="meter-circle-background" cx="${centerX}" cy="${centerY}" r="${circleRadius}" />
-        </g>
-        
-        <!-- Unclipped full circle outline -->
-        <circle class="meter-circle-outline" cx="${centerX}" cy="${centerY}" r="${circleRadius}" />
-        
-        <!-- Label at top -->
-        <text class="meter-label-text" x="${centerX}" y="${labelY}" text-anchor="middle" font-size="${labelFontSize}" dominant-baseline="hanging">${label}</text>
-        
-        <!-- Tick marks (no labels) -->
-        ${tickMarks}
-        
-        <!-- Needle -->
-        <line class="meter-needle meter-needle-line" 
-              x1="${centerX}" y1="${centerY}" 
-              x2="${needleX}" y2="${needleY}" />
-        
-        <!-- Pivot dot -->
-        <circle class="meter-pivot-dot" cx="${centerX}" cy="${centerY}" r="3" />
-        
-        <!-- Value number -->
-        <text class="meter-value-text" x="${centerX}" y="${valueY}" text-anchor="middle" font-size="${fontSize}">${value.toFixed(0)}</text>
-        
-        <!-- Units label -->
-        <text class="meter-units-text" x="${centerX}" y="${unitsY}" text-anchor="middle" font-size="${unitsFontSize}">WATTS</text>
-      </svg>
     `;
   }
 
@@ -693,7 +753,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     });
   }
 
-  _startAnimationLoop() {
+  _startFlowAnimationLoop() {
     const animate = (timestamp) => {
       if (!this._lastAnimationTime) {
         this._lastAnimationTime = timestamp;
@@ -701,51 +761,6 @@ customElements.define("energy-flow-card", class extends HTMLElement {
       
       const deltaTime = timestamp - this._lastAnimationTime;
       this._lastAnimationTime = timestamp;
-      
-      // Update needle positions with smooth interpolation
-      this._needleAngles.forEach((state, id) => {
-        const radius = 50;
-        const boxWidth = 120;
-        const centerX = boxWidth / 2;
-        const centerY = radius + 25;
-        const needleLength = radius - 5;
-        
-        // Smoothly interpolate main needle (fast response)
-        const mainLerpFactor = Math.min(deltaTime / 150, 1); // 150ms response time
-        state.current += (state.target - state.current) * mainLerpFactor;
-        
-        // Ghost needle lags behind (slower response)
-        const ghostLerpFactor = Math.min(deltaTime / 400, 1); // 400ms response time
-        state.ghost += (state.current - state.ghost) * ghostLerpFactor;
-        
-        // Clamp ghost to maximum 10 degrees behind main needle
-        const maxLag = 10;
-        if (state.ghost < state.current - maxLag) {
-          state.ghost = state.current - maxLag;
-        } else if (state.ghost > state.current + maxLag) {
-          state.ghost = state.current + maxLag;
-        }
-        
-        // Update main needle
-        const needle = this.querySelector(`#needle-${id}`);
-        if (needle) {
-          const needleRad = (state.current * Math.PI) / 180;
-          const needleX = centerX + needleLength * Math.cos(needleRad);
-          const needleY = centerY - needleLength * Math.sin(needleRad);
-          needle.setAttribute('x2', needleX);
-          needle.setAttribute('y2', needleY);
-        }
-        
-        // Update ghost needle
-        const ghostNeedle = this.querySelector(`#ghost-needle-${id}`);
-        if (ghostNeedle) {
-          const ghostRad = (state.ghost * Math.PI) / 180;
-          const ghostX = centerX + needleLength * Math.cos(ghostRad);
-          const ghostY = centerY - needleLength * Math.sin(ghostRad);
-          ghostNeedle.setAttribute('x2', ghostX);
-          ghostNeedle.setAttribute('y2', ghostY);
-        }
-      });
       
       // Update all flow dots
       this._flowDots.forEach((dotStates, flowId) => {
@@ -1100,7 +1115,10 @@ customElements.define("energy-flow-card", class extends HTMLElement {
       flowLayer.appendChild(circle);
     }
   }
-});
+}
+
+// Register custom element
+customElements.define("energy-flow-card", EnergyFlowCard);
 
 // Register in card picker
 window.customCards = window.customCards || [];
