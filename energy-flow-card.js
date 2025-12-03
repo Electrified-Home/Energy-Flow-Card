@@ -747,7 +747,7 @@ class EnergyFlowCard extends HTMLElement {
     // Green: Good (production to load/battery, battery to load)
     // Yellow: Warning (exporting to grid, grid charging battery)
     // Red: Bad (importing from grid to load)
-    const threshold = 100;
+    const threshold = 0;
     const flows = [
       { id: 'production-to-load', from: productionPos, to: loadPos, power: productionToLoad, color: '#4caf50' },
       { id: 'production-to-battery', from: productionPos, to: batteryPos, power: productionToBattery, color: '#4caf50' },
@@ -762,7 +762,7 @@ class EnergyFlowCard extends HTMLElement {
       if (flow.power > threshold) {
         this._updateOrCreateFlow(flowLayer, flow.id, flow.from, flow.to, flow.power, flow.color);
       } else {
-        this._removeFlow(flowLayer, flow.id);
+        this._fadeOutFlow(flowLayer, flow.id);
       }
     });
   }
@@ -821,12 +821,12 @@ class EnergyFlowCard extends HTMLElement {
     let flowGroup = flowLayer.querySelector(`#${flowId}`);
     
     // Calculate visual properties based on power
-    // Opacity: 0-100W = 50%, 100-200W = 50% to 100%
+    // Opacity: 0-100W = 25%, 100-200W = 25% to 100%
     let opacity;
     if (power <= 100) {
-      opacity = 0.5;
+      opacity = 0.25;
     } else if (power <= 200) {
-      opacity = 0.5 + ((power - 100) / 100) * 0.5; // 0.5 to 1.0
+      opacity = 0.25 + ((power - 100) / 100) * 0.75; // 0.25 to 1.0
     } else {
       opacity = 1.0;
     }
@@ -879,6 +879,7 @@ class EnergyFlowCard extends HTMLElement {
       glowPath.setAttribute('stroke', color);
       glowPath.setAttribute('stroke-opacity', opacity * 0.5);
       glowPath.setAttribute('stroke-width', strokeWidth * 2);
+      glowPath.setAttribute('style', 'transition: stroke-opacity 0.5s ease-out, stroke-width 0.5s ease-out;');
       glowPath.id = `glow-${flowId}`;
       flowGroup.appendChild(glowPath);
       
@@ -889,6 +890,7 @@ class EnergyFlowCard extends HTMLElement {
       path.setAttribute('stroke', color);
       path.setAttribute('stroke-opacity', opacity);
       path.setAttribute('stroke-width', strokeWidth);
+      path.setAttribute('style', 'transition: stroke-opacity 0.5s ease-out, stroke-width 0.5s ease-out;');
       path.id = `path-${flowId}`;
       flowGroup.appendChild(path);
       
@@ -901,6 +903,7 @@ class EnergyFlowCard extends HTMLElement {
         circle.setAttribute('r', dotRadius);
         circle.setAttribute('fill', color);
         circle.setAttribute('opacity', opacity);
+        circle.setAttribute('style', 'transition: opacity 0.5s ease-out, r 0.5s ease-out;');
         flowGroup.appendChild(circle);
         
         // Stagger dots evenly along the path
@@ -957,6 +960,32 @@ class EnergyFlowCard extends HTMLElement {
     
     // Remove dot state
     this._flowDots.delete(flowId);
+  }
+
+  _fadeOutFlow(flowLayer, flowId) {
+    const flowGroup = flowLayer.querySelector(`#${flowId}`);
+    if (!flowGroup) return;
+    
+    // Fade out by setting opacity to 0
+    const glowPath = flowGroup.querySelector(`#glow-${flowId}`);
+    const path = flowGroup.querySelector(`#path-${flowId}`);
+    
+    if (glowPath) glowPath.setAttribute('stroke-opacity', '0');
+    if (path) path.setAttribute('stroke-opacity', '0');
+    
+    // Fade out dots
+    const dotStates = this._flowDots.get(flowId);
+    if (dotStates) {
+      dotStates.forEach((dotState, dotIndex) => {
+        const dot = flowGroup.querySelector(`#dot-${flowId}-${dotIndex}`);
+        if (dot) dot.setAttribute('opacity', '0');
+      });
+    }
+    
+    // Remove from DOM after transition completes (500ms)
+    setTimeout(() => {
+      this._removeFlow(flowLayer, flowId);
+    }, 500);
   }
 
   _extractIconPaths() {
