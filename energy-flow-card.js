@@ -1,6 +1,6 @@
 // Meter class: Fully self-contained meter with its own rendering and animation
 class Meter {
-  constructor(id, value, min, max, bidirectional, label, icon, invertView = false, parentElement = null) {
+  constructor(id, value, min, max, bidirectional, label, icon, invertView = false, showPlus = false, parentElement = null) {
     this.id = id;
     this._value = value;
     this.min = min;
@@ -9,6 +9,7 @@ class Meter {
     this.label = label;
     this.icon = icon;
     this._invertView = invertView;
+    this.showPlus = showPlus;
     this.parentElement = parentElement;
     
     // Meter geometry constants
@@ -43,9 +44,8 @@ class Meter {
     // Update value text immediately
     if (this.parentElement) {
       const valueText = this.parentElement.querySelector(`#value-${this.id}`);
-      const displayValue = this.displayValue;
       if (valueText) {
-        valueText.textContent = displayValue.toFixed(0) + (displayValue < 0 ? '\u00A0' : '');
+        valueText.textContent = this._formatValueText();
       }
       
       // Update dimming
@@ -66,15 +66,27 @@ class Meter {
     // Update value text immediately (displayValue depends on invertView)
     if (this.parentElement) {
       const valueText = this.parentElement.querySelector(`#value-${this.id}`);
-      const displayValue = this.displayValue;
       if (valueText) {
-        valueText.textContent = displayValue.toFixed(0) + (displayValue < 0 ? '\u00A0' : '');
+        valueText.textContent = this._formatValueText();
       }
     }
   }
   
   get displayValue() {
     return this._invertView ? -this._value : this._value;
+  }
+  
+  _formatValueText() {
+    const displayValue = this.displayValue;
+    const valueStr = displayValue.toFixed(0);
+    
+    if (displayValue < 0) {
+      return valueStr + '\u00A0'; // Negative with non-breaking space
+    } else if (displayValue > 0 && this.showPlus) {
+      return '+' + valueStr + '\u00A0'; // Positive with + sign and non-breaking space
+    } else {
+      return valueStr; // Zero or positive without sign
+    }
   }
   
   _updateNeedleAngle() {
@@ -271,7 +283,7 @@ class Meter {
         
         <circle cx="${this.centerX}" cy="${this.centerY}" r="5" fill="rgb(255, 255, 255)" />
         
-        <text id="value-${this.id}" x="${this.centerX}" y="${valueY}" text-anchor="middle" font-size="${fontSize}" fill="rgb(255, 255, 255)" font-weight="600">${displayValue.toFixed(0)}${displayValue < 0 ? '\u00A0' : ''}</text>
+        <text id="value-${this.id}" x="${this.centerX}" y="${valueY}" text-anchor="middle" font-size="${fontSize}" fill="rgb(255, 255, 255)" font-weight="600">${this._formatValueText()}</text>
         
         <text x="${this.centerX}" y="${unitsY}" text-anchor="middle" font-size="${unitsFontSize}" fill="rgb(160, 160, 160)" font-weight="400" letter-spacing="0.5">WATTS</text>
         
@@ -349,7 +361,8 @@ class EnergyFlowCard extends HTMLElement {
         { name: "battery_min", label: "Battery Min (W)", selector: { number: { mode: "box" } } },
         { name: "battery_max", label: "Battery Max (W)", selector: { number: { mode: "box" } } },
         { name: "invert_battery_data", label: "Invert Battery Data", selector: { boolean: {} } },
-        { name: "invert_battery_view", label: "Invert Battery View", selector: { boolean: {} } }
+        { name: "invert_battery_view", label: "Invert Battery View", selector: { boolean: {} } },
+        { name: "show_plus", label: "Show + Sign", selector: { boolean: {} } }
       ]
     };
   }
@@ -444,7 +457,8 @@ class EnergyFlowCard extends HTMLElement {
       const batteryMeter = new Meter('battery', battery, batteryMin, batteryMax, true,
         this._getDisplayName('battery_name', 'battery_entity', 'Battery'),
         this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'),
-        this._config.invert_battery_view);
+        this._config.invert_battery_view,
+        this._config.show_plus);
       const gridMeter = new Meter('grid', grid, gridMin, gridMax, true,
         this._getDisplayName('grid_name', 'grid_entity', 'Grid'),
         this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower'));
