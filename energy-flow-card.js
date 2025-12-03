@@ -62,7 +62,8 @@ customElements.define("energy-flow-card", class extends HTMLElement {
         { name: "battery_icon", selector: { icon: {} }, context: { icon_entity: "battery_entity" } },
         { name: "battery_min", label: "Battery Min (W)", selector: { number: { mode: "box" } } },
         { name: "battery_max", label: "Battery Max (W)", selector: { number: { mode: "box" } } },
-        { name: "invert_battery", label: "Invert Battery Power", selector: { boolean: {} } }
+        { name: "invert_battery_data", label: "Invert Battery Data", selector: { boolean: {} } },
+        { name: "invert_battery_view", label: "Invert Battery View", selector: { boolean: {} } }
       ]
     };
   }
@@ -130,8 +131,8 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     const production = parseFloat(productionState?.state) || 0;
     let battery = parseFloat(batteryState?.state) || 0;
     
-    // Invert battery if configured
-    if (this._config.invert_battery) {
+    // Invert battery data if configured (affects interpretation)
+    if (this._config.invert_battery_data) {
       battery = -battery;
     }
 
@@ -217,7 +218,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
             
             <!-- Battery Meter (middle left, offset right) -->
             <g id="battery-meter" class="meter-group" transform="translate(${this._meterPositions.battery.x}, ${this._meterPositions.battery.y})">
-              ${this._createSVGMeter('battery', battery, batteryMin, batteryMax, true, this._getDisplayName('battery_name', 'battery_entity', 'Battery'), this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'))}
+              ${this._createSVGMeter('battery', battery, batteryMin, batteryMax, true, this._getDisplayName('battery_name', 'battery_entity', 'Battery'), this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'), this._config.invert_battery_view)}
             </g>
             
             <!-- Grid Meter (bottom left) -->
@@ -236,7 +237,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     } else {
       // Update existing meters
       this._updateMeter('production', production, 0, productionMax, false, this._getDisplayName('production_name', 'production_entity', 'Production'), this._getIcon('production_icon', 'production_entity', 'mdi:solar-power'));
-      this._updateMeter('battery', battery, batteryMin, batteryMax, true, this._getDisplayName('battery_name', 'battery_entity', 'Battery'), this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'));
+      this._updateMeter('battery', battery, batteryMin, batteryMax, true, this._getDisplayName('battery_name', 'battery_entity', 'Battery'), this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'), this._config.invert_battery_view);
       this._updateMeter('grid', grid, gridMin, gridMax, true, this._getDisplayName('grid_name', 'grid_entity', 'Grid'), this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower'));
       this._updateMeter('load', load, 0, loadMax, false, this._getDisplayName('load_name', 'load_entity', 'Load'), this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt'));
       
@@ -327,7 +328,10 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     `;
   }
 
-  _createSVGMeter(id, value, min, max, bidirectional, label, icon) {
+  _createSVGMeter(id, value, min, max, bidirectional, label, icon, invertView = false) {
+    // Invert view if requested (display only, doesn't affect interpretation)
+    const displayValue = invertView ? -value : value;
+    
     const radius = 50;
     const boxWidth = 120;
     const boxHeight = 135;
@@ -339,15 +343,15 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     const offsetX = -centerX;
     const offsetY = -centerY;
     
-    // Calculate percentage and angle for needle
+    // Calculate percentage and angle for needle (use displayValue for inverted view)
     let percentage, angle;
     
     if (bidirectional) {
       const range = max - min;
-      percentage = Math.min(Math.max((value - min) / range, 0), 1);
+      percentage = Math.min(Math.max((displayValue - min) / range, 0), 1);
       angle = 180 - (percentage * 180);
     } else {
-      percentage = Math.min(Math.max(value / max, 0), 1);
+      percentage = Math.min(Math.max(displayValue / max, 0), 1);
       angle = 180 - (percentage * 180);
     }
     
@@ -432,7 +436,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
         
         <circle cx="${centerX}" cy="${centerY}" r="5" fill="rgb(255, 255, 255)" />
         
-        <text id="value-${id}" x="${centerX}" y="${valueY}" text-anchor="middle" font-size="${fontSize}" fill="rgb(255, 255, 255)" font-weight="600">${value.toFixed(0)}${value < 0 ? '\u00A0' : ''}</text>
+        <text id="value-${id}" x="${centerX}" y="${valueY}" text-anchor="middle" font-size="${fontSize}" fill="rgb(255, 255, 255)" font-weight="600">${displayValue.toFixed(0)}${displayValue < 0 ? '\u00A0' : ''}</text>
         
         <text x="${centerX}" y="${unitsY}" text-anchor="middle" font-size="${unitsFontSize}" fill="rgb(160, 160, 160)" font-weight="400" letter-spacing="0.5">WATTS</text>
         
@@ -441,21 +445,24 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     `;
   }
 
-  _updateMeter(id, value, min, max, bidirectional, label, icon) {
+  _updateMeter(id, value, min, max, bidirectional, label, icon, invertView = false) {
+    // Invert view if requested (display only, doesn't affect interpretation)
+    const displayValue = invertView ? -value : value;
+    
     const radius = 50;
     const boxWidth = 120;
     const centerX = boxWidth / 2;
     const centerY = radius + 25;
     
-    // Calculate percentage and angle for needle
+    // Calculate percentage and angle for needle (use displayValue for inverted view)
     let percentage, angle;
     
     if (bidirectional) {
       const range = max - min;
-      percentage = Math.min(Math.max((value - min) / range, 0), 1);
+      percentage = Math.min(Math.max((displayValue - min) / range, 0), 1);
       angle = 180 - (percentage * 180);
     } else {
-      percentage = Math.min(Math.max(value / max, 0), 1);
+      percentage = Math.min(Math.max(displayValue / max, 0), 1);
       angle = 180 - (percentage * 180);
     }
     
@@ -470,7 +477,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     // Update value text
     const valueText = this.querySelector(`#value-${id}`);
     if (valueText) {
-      valueText.textContent = value.toFixed(0) + (value < 0 ? '\u00A0' : '');
+      valueText.textContent = displayValue.toFixed(0) + (displayValue < 0 ? '\u00A0' : '');
     }
   }
 

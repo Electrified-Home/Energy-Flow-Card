@@ -151,6 +151,23 @@
           <small>Positive = Discharge, Negative = Charge</small>
         </div>
       </div>
+      
+      <div class="control-group">
+        <div class="control-item">
+          <label>
+            <input type="checkbox" id="invert-battery-data">
+            Invert Battery Data
+          </label>
+          <small>Inverts value interpretation (affects flow calculation)</small>
+        </div>
+        <div class="control-item">
+          <label>
+            <input type="checkbox" id="invert-battery-view">
+            Invert Battery View
+          </label>
+          <small>Inverts displayed value only (visual only)</small>
+        </div>
+      </div>
 
       <h3>Scenarios</h3>
       <div class="presets">
@@ -274,7 +291,8 @@
       load_entity: 'sensor.load',
       production_entity: 'sensor.production',
       battery_entity: 'sensor.battery',
-      invert_battery: false
+      invert_battery_data: false,
+      invert_battery_view: false
     });
     card.hass = hass;
     cardContainer.appendChild(card);
@@ -285,12 +303,24 @@
       const load = parseFloat(document.getElementById('load-input').value) || 0;
       const production = parseFloat(document.getElementById('production-input').value) || 0;
       const battery = parseFloat(document.getElementById('battery-input').value) || 0;
+      const invertData = document.getElementById('invert-battery-data').checked;
+      const invertView = document.getElementById('invert-battery-view').checked;
 
       hass.updateState('sensor.grid', grid);
       hass.updateState('sensor.load', load);
       hass.updateState('sensor.production', production);
       hass.updateState('sensor.battery', battery);
 
+      // Update config with invert options
+      card.setConfig({
+        grid_entity: 'sensor.grid',
+        load_entity: 'sensor.load',
+        production_entity: 'sensor.production',
+        battery_entity: 'sensor.battery',
+        invert_battery_data: invertData,
+        invert_battery_view: invertView
+      });
+      
       card.hass = { ...hass };
     }
 
@@ -299,6 +329,8 @@
     document.getElementById('load-input').addEventListener('input', updateCard);
     document.getElementById('production-input').addEventListener('input', updateCard);
     document.getElementById('battery-input').addEventListener('input', updateCard);
+    document.getElementById('invert-battery-data').addEventListener('change', updateCard);
+    document.getElementById('invert-battery-view').addEventListener('change', updateCard);
 
     // Scenario presets with tweening
     let tweenInterval = null;
