@@ -5,6 +5,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     this._animationFrameId = null;
     this._flowDots = new Map(); // Store dot states: flowId -> array of { progress: 0-1, velocity: units/sec }
     this._lastAnimationTime = null;
+    this._needleAngles = new Map(); // Store needle angles: id -> { target: angle, current: angle, ghost: angle }
     
     // Animation speed multiplier (higher = faster dots)
     this._speedMultiplier = 1.0;
@@ -133,12 +134,12 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     }
 
     // Get min/max values with defaults
-    const gridMin = this._config.grid_min ?? -5000;
-    const gridMax = this._config.grid_max ?? 5000;
-    const loadMax = this._config.load_max ?? 5000;
-    const productionMax = this._config.production_max ?? 5000;
-    const batteryMin = this._config.battery_min ?? -5000;
-    const batteryMax = this._config.battery_max ?? 5000;
+    const gridMin = this._config.grid_min != null ? this._config.grid_min : -5000;
+    const gridMax = this._config.grid_max != null ? this._config.grid_max : 5000;
+    const loadMax = this._config.load_max != null ? this._config.load_max : 5000;
+    const productionMax = this._config.production_max != null ? this._config.production_max : 5000;
+    const batteryMin = this._config.battery_min != null ? this._config.battery_min : -5000;
+    const batteryMax = this._config.battery_max != null ? this._config.battery_max : 5000;
 
     // Only do full render if structure doesn't exist
     if (!this.querySelector('.energy-flow-svg')) {
@@ -214,22 +215,22 @@ customElements.define("energy-flow-card", class extends HTMLElement {
             
             <!-- Production Meter (top left) -->
             <g id="production-meter" class="meter-group" transform="translate(${this._meterPositions.production.x}, ${this._meterPositions.production.y})">
-              ${this._createSVGMeter('production', production, 0, productionMax, false, this._getDisplayName('production_name', 'production_entity', 'Production'))}
+              ${this._createSVGMeter('production', production, 0, productionMax, false, this._getDisplayName('production_name', 'production_entity', 'Production'), this._getIcon('production_icon', 'production_entity', 'mdi:solar-power'))}
             </g>
             
             <!-- Battery Meter (middle left, offset right) -->
             <g id="battery-meter" class="meter-group" transform="translate(${this._meterPositions.battery.x}, ${this._meterPositions.battery.y})">
-              ${this._createSVGMeter('battery', battery, batteryMin, batteryMax, true, this._getDisplayName('battery_name', 'battery_entity', 'Battery'))}
+              ${this._createSVGMeter('battery', battery, batteryMin, batteryMax, true, this._getDisplayName('battery_name', 'battery_entity', 'Battery'), this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'))}
             </g>
             
             <!-- Grid Meter (bottom left) -->
             <g id="grid-meter" class="meter-group" transform="translate(${this._meterPositions.grid.x}, ${this._meterPositions.grid.y})">
-              ${this._createSVGMeter('grid', grid, gridMin, gridMax, true, this._getDisplayName('grid_name', 'grid_entity', 'Grid'))}
+              ${this._createSVGMeter('grid', grid, gridMin, gridMax, true, this._getDisplayName('grid_name', 'grid_entity', 'Grid'), this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower'))}
             </g>
             
             <!-- Load Meter (right, 2x size) -->
             <g id="load-meter" class="meter-group" transform="translate(${this._meterPositions.load.x}, ${this._meterPositions.load.y}) scale(2)">
-              ${this._createSVGMeter('load', load, 0, loadMax, false, this._getDisplayName('load_name', 'load_entity', 'Load'))}
+              ${this._createSVGMeter('load', load, 0, loadMax, false, this._getDisplayName('load_name', 'load_entity', 'Load'), this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt'))}
             </g>
           </svg>
           </div>
@@ -237,10 +238,10 @@ customElements.define("energy-flow-card", class extends HTMLElement {
       `;
     } else {
       // Update existing meters
-      this._updateMeter('production', production, 0, productionMax, false, this._getDisplayName('production_name', 'production_entity', 'Production'));
-      this._updateMeter('battery', battery, batteryMin, batteryMax, true, this._getDisplayName('battery_name', 'battery_entity', 'Battery'));
-      this._updateMeter('grid', grid, gridMin, gridMax, true, this._getDisplayName('grid_name', 'grid_entity', 'Grid'));
-      this._updateMeter('load', load, 0, loadMax, false, this._getDisplayName('load_name', 'load_entity', 'Load'));
+      this._updateMeter('production', production, 0, productionMax, false, this._getDisplayName('production_name', 'production_entity', 'Production'), this._getIcon('production_icon', 'production_entity', 'mdi:solar-power'));
+      this._updateMeter('battery', battery, batteryMin, batteryMax, true, this._getDisplayName('battery_name', 'battery_entity', 'Battery'), this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'));
+      this._updateMeter('grid', grid, gridMin, gridMax, true, this._getDisplayName('grid_name', 'grid_entity', 'Grid'), this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower'));
+      this._updateMeter('load', load, 0, loadMax, false, this._getDisplayName('load_name', 'load_entity', 'Load'), this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt'));
       
       // Update meter dimming based on zero values
       this._updateMeterDimming('production', production);
@@ -298,7 +299,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     return ``;
   }
 
-  _createSVGMeter(id, value, min, max, bidirectional, label) {
+  _createSVGMeter(id, value, min, max, bidirectional, label, icon) {
     const radius = 50;
     const boxWidth = 120;
     const boxHeight = 135;
@@ -315,7 +316,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     
     if (bidirectional) {
       const range = max - min;
-      percentage = (value - min) / range;
+      percentage = Math.min(Math.max((value - min) / range, 0), 1);
       angle = 180 - (percentage * 180);
     } else {
       percentage = Math.min(Math.max(value / max, 0), 1);
@@ -385,9 +386,17 @@ customElements.define("energy-flow-card", class extends HTMLElement {
         
         <text x="${centerX}" y="15" text-anchor="middle" font-size="${labelFontSize}" fill="rgb(255, 255, 255)" font-weight="500">${label}</text>
         
-        <line id="needle-${id}" x1="${centerX}" y1="${centerY}" x2="${needleX}" y2="${needleY}" stroke="rgb(255, 255, 255)" stroke-width="2" stroke-linecap="round" />
+        <foreignObject x="${centerX - 12}" y="${centerY - 35}" width="24" height="24">
+          <div xmlns="http://www.w3.org/1999/xhtml" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">
+            <ha-icon icon="${icon}" style="--mdc-icon-size: 24px; color: rgb(160, 160, 160);"></ha-icon>
+          </div>
+        </foreignObject>
         
-        <circle cx="${centerX}" cy="${centerY}" r="3" fill="rgb(255, 255, 255)" />
+        <line id="ghost-needle-${id}" x1="${centerX}" y1="${centerY}" x2="${needleX}" y2="${needleY}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" opacity="0.3" />
+        
+        <line id="needle-${id}" x1="${centerX}" y1="${centerY}" x2="${needleX}" y2="${needleY}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" />
+        
+        <circle cx="${centerX}" cy="${centerY}" r="5" fill="rgb(255, 255, 255)" />
         
         <text id="value-${id}" x="${centerX}" y="${valueY}" text-anchor="middle" font-size="${fontSize}" fill="rgb(255, 255, 255)" font-weight="600">${value.toFixed(0)}${value < 0 ? '\u00A0' : ''}</text>
         
@@ -396,7 +405,7 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     `;
   }
 
-  _updateMeter(id, value, min, max, bidirectional, label) {
+  _updateMeter(id, value, min, max, bidirectional, label, icon) {
     const radius = 50;
     const boxWidth = 120;
     const centerX = boxWidth / 2;
@@ -407,24 +416,19 @@ customElements.define("energy-flow-card", class extends HTMLElement {
     
     if (bidirectional) {
       const range = max - min;
-      percentage = (value - min) / range;
+      percentage = Math.min(Math.max((value - min) / range, 0), 1);
       angle = 180 - (percentage * 180);
     } else {
       percentage = Math.min(Math.max(value / max, 0), 1);
       angle = 180 - (percentage * 180);
     }
     
-    // Needle position
-    const needleRad = (angle * Math.PI) / 180;
-    const needleLength = radius - 5;
-    const needleX = centerX + needleLength * Math.cos(needleRad);
-    const needleY = centerY - needleLength * Math.sin(needleRad);
-    
-    // Update needle
-    const needle = this.querySelector(`#needle-${id}`);
-    if (needle) {
-      needle.setAttribute('x2', needleX);
-      needle.setAttribute('y2', needleY);
+    // Initialize or update needle angle state
+    if (!this._needleAngles.has(id)) {
+      this._needleAngles.set(id, { target: angle, current: angle, ghost: angle });
+    } else {
+      const state = this._needleAngles.get(id);
+      state.target = angle;
     }
     
     // Update value text
@@ -654,6 +658,51 @@ customElements.define("energy-flow-card", class extends HTMLElement {
       
       const deltaTime = timestamp - this._lastAnimationTime;
       this._lastAnimationTime = timestamp;
+      
+      // Update needle positions with smooth interpolation
+      this._needleAngles.forEach((state, id) => {
+        const radius = 50;
+        const boxWidth = 120;
+        const centerX = boxWidth / 2;
+        const centerY = radius + 25;
+        const needleLength = radius - 5;
+        
+        // Smoothly interpolate main needle (fast response)
+        const mainLerpFactor = Math.min(deltaTime / 150, 1); // 150ms response time
+        state.current += (state.target - state.current) * mainLerpFactor;
+        
+        // Ghost needle lags behind (slower response)
+        const ghostLerpFactor = Math.min(deltaTime / 400, 1); // 400ms response time
+        state.ghost += (state.current - state.ghost) * ghostLerpFactor;
+        
+        // Clamp ghost to maximum 10 degrees behind main needle
+        const maxLag = 10;
+        if (state.ghost < state.current - maxLag) {
+          state.ghost = state.current - maxLag;
+        } else if (state.ghost > state.current + maxLag) {
+          state.ghost = state.current + maxLag;
+        }
+        
+        // Update main needle
+        const needle = this.querySelector(`#needle-${id}`);
+        if (needle) {
+          const needleRad = (state.current * Math.PI) / 180;
+          const needleX = centerX + needleLength * Math.cos(needleRad);
+          const needleY = centerY - needleLength * Math.sin(needleRad);
+          needle.setAttribute('x2', needleX);
+          needle.setAttribute('y2', needleY);
+        }
+        
+        // Update ghost needle
+        const ghostNeedle = this.querySelector(`#ghost-needle-${id}`);
+        if (ghostNeedle) {
+          const ghostRad = (state.ghost * Math.PI) / 180;
+          const ghostX = centerX + needleLength * Math.cos(ghostRad);
+          const ghostY = centerY - needleLength * Math.sin(ghostRad);
+          ghostNeedle.setAttribute('x2', ghostX);
+          ghostNeedle.setAttribute('y2', ghostY);
+        }
+      });
       
       // Update all flow dots
       this._flowDots.forEach((dotStates, flowId) => {
