@@ -7,7 +7,7 @@ import { Meter } from './meter.js';
 describe('Meter', () => {
   describe('Constructor and Initialization', () => {
     test('should initialize with basic unidirectional configuration', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter.id).toBe('test');
       expect(meter.value).toBe(100);
@@ -22,7 +22,7 @@ describe('Meter', () => {
     });
 
     test('should initialize with bidirectional configuration', () => {
-      const meter = new Meter('battery', 500, -1000, 1000, true, 'Battery', 'mdi:battery');
+      const meter = new Meter('battery', 500, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS');
 
       expect(meter.bidirectional).toBe(true);
       expect(meter.min).toBe(-1000);
@@ -30,14 +30,14 @@ describe('Meter', () => {
     });
 
     test('should initialize with optional parameters', () => {
-      const meter = new Meter('grid', -200, -5000, 5000, true, 'Grid', 'mdi:grid', true, true);
+      const meter = new Meter('grid', -200, -5000, 5000, true, 'Grid', 'mdi:grid', 'WATTS', true, true);
 
       expect(meter.invertView).toBe(true);
       expect(meter.showPlus).toBe(true);
     });
 
     test('should set geometry constants correctly', () => {
-      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter.radius).toBe(50);
       expect(meter.boxWidth).toBe(120);
@@ -50,7 +50,7 @@ describe('Meter', () => {
     });
 
     test('should initialize needle state', () => {
-      const meter = new Meter('test', 500, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 500, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter.needleState).toBeDefined();
       expect(meter.needleState.target).toBeGreaterThanOrEqual(0);
@@ -61,14 +61,14 @@ describe('Meter', () => {
 
   describe('Value Management', () => {
     test('should update value via setter', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       meter.value = 500;
       expect(meter.value).toBe(500);
     });
 
     test('should not trigger update when value unchanged', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
       const initialTarget = meter.needleState.target;
 
       meter.value = 100; // Same value
@@ -76,7 +76,7 @@ describe('Meter', () => {
     });
 
     test('should update needle angle when value changes', () => {
-      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
       const initialTarget = meter.needleState.target;
 
       meter.value = 500; // 50% of max
@@ -85,7 +85,7 @@ describe('Meter', () => {
     });
 
     test('should handle negative values in bidirectional mode', () => {
-      const meter = new Meter('battery', 0, -1000, 1000, true, 'Battery', 'mdi:battery');
+      const meter = new Meter('battery', 0, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS');
 
       meter.value = -500;
       expect(meter.value).toBe(-500);
@@ -95,19 +95,19 @@ describe('Meter', () => {
 
   describe('Display Value and Invert View', () => {
     test('should return normal value when invertView is false', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', false);
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false);
 
       expect(meter.displayValue).toBe(100);
     });
 
     test('should return inverted value when invertView is true', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', true);
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', true);
 
       expect(meter.displayValue).toBe(-100);
     });
 
     test('should toggle invertView', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', false);
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS',false);
 
       expect(meter.invertView).toBe(false);
       expect(meter.displayValue).toBe(100);
@@ -118,7 +118,7 @@ describe('Meter', () => {
     });
 
     test('should not trigger update when invertView unchanged', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', false);
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS',false);
       const initialTarget = meter.needleState.target;
 
       meter.invertView = false; // Same value
@@ -126,7 +126,7 @@ describe('Meter', () => {
     });
 
     test('should update needle angle when invertView changes', () => {
-      const meter = new Meter('battery', 500, -1000, 1000, true, 'Battery', 'mdi:battery', false);
+      const meter = new Meter('battery', 500, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS', false);
       const targetWhenNormal = meter.needleState.target;
 
       meter.invertView = true;
@@ -136,37 +136,37 @@ describe('Meter', () => {
 
   describe('Value Formatting', () => {
     test('should format positive values without sign by default', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter._formatValueText()).toBe('100');
     });
 
     test('should format positive values with + when showPlus is true', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', false, true);
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, true);
 
       expect(meter._formatValueText()).toBe('+100\u00A0');
     });
 
     test('should format negative values with sign and space', () => {
-      const meter = new Meter('battery', -100, -1000, 1000, true, 'Battery', 'mdi:battery');
+      const meter = new Meter('battery', -100, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS');
 
       expect(meter._formatValueText()).toBe('-100\u00A0');
     });
 
     test('should format zero without sign', () => {
-      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter._formatValueText()).toBe('0');
     });
 
     test('should format inverted negative as positive with sign when showPlus enabled', () => {
-      const meter = new Meter('battery', -100, -1000, 1000, true, 'Battery', 'mdi:battery', true, true);
+      const meter = new Meter('battery', -100, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS', true, true);
 
       expect(meter._formatValueText()).toBe('+100\u00A0');
     });
 
     test('should round to nearest integer', () => {
-      const meter = new Meter('test', 123.7, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 123.7, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter._formatValueText()).toBe('124');
     });
@@ -174,49 +174,49 @@ describe('Meter', () => {
 
   describe('Needle Angle Calculation', () => {
     test('should calculate angle for unidirectional meter at 0%', () => {
-      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter.needleState.target).toBe(180); // 180 - (0 * 180)
     });
 
     test('should calculate angle for unidirectional meter at 50%', () => {
-      const meter = new Meter('test', 500, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 500, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter.needleState.target).toBe(90); // 180 - (0.5 * 180)
     });
 
     test('should calculate angle for unidirectional meter at 100%', () => {
-      const meter = new Meter('test', 1000, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 1000, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter.needleState.target).toBe(0); // 180 - (1 * 180)
     });
 
     test('should calculate angle for bidirectional meter at min', () => {
-      const meter = new Meter('battery', -1000, -1000, 1000, true, 'Battery', 'mdi:battery');
+      const meter = new Meter('battery', -1000, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS');
 
       expect(meter.needleState.target).toBe(180); // 180 - (0 * 180)
     });
 
     test('should calculate angle for bidirectional meter at zero', () => {
-      const meter = new Meter('battery', 0, -1000, 1000, true, 'Battery', 'mdi:battery');
+      const meter = new Meter('battery', 0, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS');
 
       expect(meter.needleState.target).toBe(90); // 180 - (0.5 * 180)
     });
 
     test('should calculate angle for bidirectional meter at max', () => {
-      const meter = new Meter('battery', 1000, -1000, 1000, true, 'Battery', 'mdi:battery');
+      const meter = new Meter('battery', 1000, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS');
 
       expect(meter.needleState.target).toBe(0); // 180 - (1 * 180)
     });
 
     test('should clamp angle for values exceeding max', () => {
-      const meter = new Meter('test', 2000, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 2000, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter.needleState.target).toBe(0); // Clamped to max (100%)
     });
 
     test('should clamp angle for values below min', () => {
-      const meter = new Meter('test', -500, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', -500, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(meter.needleState.target).toBe(180); // Clamped to min (0%)
     });
@@ -224,7 +224,7 @@ describe('Meter', () => {
 
   describe('SVG Generation', () => {
     test('should generate valid SVG markup', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
       const svg = meter.createSVG();
 
       expect(svg).toContain('<g transform=');
@@ -238,28 +238,28 @@ describe('Meter', () => {
     });
 
     test('should include meter label in SVG', () => {
-      const meter = new Meter('production', 500, 0, 5000, false, 'Production', 'mdi:solar-power');
+      const meter = new Meter('production', 500, 0, 5000, false, 'Production', 'mdi:solar-power', 'WATTS');
       const svg = meter.createSVG();
 
       expect(svg).toContain('>Production</text>');
     });
 
     test('should include meter icon in SVG', () => {
-      const meter = new Meter('battery', 0, -1000, 1000, true, 'Battery', 'mdi:battery');
+      const meter = new Meter('battery', 0, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS');
       const svg = meter.createSVG();
 
       expect(svg).toContain('icon="mdi:battery"');
     });
 
     test('should include formatted value in SVG', () => {
-      const meter = new Meter('test', 1234, 0, 5000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 1234, 0, 5000, false, 'Test', 'mdi:test', 'WATTS');
       const svg = meter.createSVG();
 
       expect(svg).toContain('>1234</text>');
     });
 
     test('should generate tick marks for unidirectional meter', () => {
-      const meter = new Meter('test', 500, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 500, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
       const svg = meter.createSVG();
 
       // Unidirectional should have 3 ticks: 0, max/2, max
@@ -268,7 +268,7 @@ describe('Meter', () => {
     });
 
     test('should generate tick marks for bidirectional meter', () => {
-      const meter = new Meter('battery', 0, -1000, 1000, true, 'Battery', 'mdi:battery');
+      const meter = new Meter('battery', 0, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS');
       const svg = meter.createSVG();
 
       // Bidirectional should have 3 ticks: min, 0, max
@@ -277,7 +277,7 @@ describe('Meter', () => {
     });
 
     test('should initialize needle state to current angle when creating SVG', () => {
-      const meter = new Meter('test', 500, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 500, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
       
       meter.createSVG();
 
@@ -297,7 +297,7 @@ describe('Meter', () => {
     });
 
     test('should start animation', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       meter.startAnimation();
 
@@ -305,7 +305,7 @@ describe('Meter', () => {
     });
 
     test('should not start animation if already animating', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       meter.startAnimation();
       const callCount = (requestAnimationFrame as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
@@ -316,7 +316,7 @@ describe('Meter', () => {
     });
 
     test('should stop animation', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       meter.startAnimation();
       meter.stopAnimation();
@@ -325,7 +325,7 @@ describe('Meter', () => {
     });
 
     test('should clear animation state when stopped', () => {
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       meter.startAnimation();
       meter.stopAnimation();
@@ -343,7 +343,7 @@ describe('Meter', () => {
       dimmer.setAttribute = vi.fn();
       mockParent.appendChild(dimmer);
 
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', false, false, mockParent);
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, false, mockParent);
       meter.updateDimming();
 
       expect(dimmer.setAttribute).toHaveBeenCalledWith('opacity', '0');
@@ -356,14 +356,14 @@ describe('Meter', () => {
       dimmer.setAttribute = vi.fn();
       mockParent.appendChild(dimmer);
 
-      const meter = new Meter('test', 0.1, 0, 1000, false, 'Test', 'mdi:test', false, false, mockParent);
+      const meter = new Meter('test', 0.1, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, false, mockParent);
       meter.updateDimming();
 
       expect(dimmer.setAttribute).toHaveBeenCalledWith('opacity', '0.3');
     });
 
     test('should handle missing parent element gracefully', () => {
-      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test');
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(() => meter.updateDimming()).not.toThrow();
     });

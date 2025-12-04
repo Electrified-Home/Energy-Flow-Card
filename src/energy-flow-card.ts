@@ -79,19 +79,23 @@ class EnergyFlowCard extends HTMLElement {
         { name: "grid_icon", selector: { icon: {} }, context: { icon_entity: "grid_entity" } },
         { name: "grid_min", label: "Grid Min (W)", selector: { number: { mode: "box" } } },
         { name: "grid_max", label: "Grid Max (W)", selector: { number: { mode: "box" } } },
+        { name: "grid_tap_action", label: "Grid Tap Action", selector: { "ui-action": {} } },
         { name: "load_entity", label: "Load", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
         { name: "load_name", selector: { entity_name: {} }, context: { entity: "load_entity" } },
         { name: "load_icon", selector: { icon: {} }, context: { icon_entity: "load_entity" } },
         { name: "load_max", label: "Load Max (W)", selector: { number: { mode: "box" } } },
+        { name: "load_tap_action", label: "Load Tap Action", selector: { "ui-action": {} } },
         { name: "production_entity", label: "Production", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
         { name: "production_name", selector: { entity_name: {} }, context: { entity: "production_entity" } },
         { name: "production_icon", selector: { icon: {} }, context: { icon_entity: "production_entity" } },
         { name: "production_max", label: "Production Max (W)", selector: { number: { mode: "box" } } },
+        { name: "production_tap_action", label: "Production Tap Action", selector: { "ui-action": {} } },
         { name: "battery_entity", label: "Battery", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
         { name: "battery_name", selector: { entity_name: {} }, context: { entity: "battery_entity" } },
         { name: "battery_icon", selector: { icon: {} }, context: { icon_entity: "battery_entity" } },
         { name: "battery_min", label: "Battery Min (W)", selector: { number: { mode: "box" } } },
         { name: "battery_max", label: "Battery Max (W)", selector: { number: { mode: "box" } } },
+        { name: "battery_tap_action", label: "Battery Tap Action", selector: { "ui-action": {} } },
         { name: "invert_battery_data", label: "Invert Battery Data", selector: { boolean: {} } },
         { name: "invert_battery_view", label: "Invert Battery View", selector: { boolean: {} } },
         { name: "show_plus", label: "Show + Sign", selector: { boolean: {} } }
@@ -310,6 +314,14 @@ class EnergyFlowCard extends HTMLElement {
         this._meters.set('grid', gridMeter);
         this._meters.set('load', loadMeter);
         
+        // Add click handlers for tap actions
+        if (this._config) {
+          this._attachMeterClickHandler('#production-meter', this._config.production_tap_action, this._config.production_entity);
+          this._attachMeterClickHandler('#battery-meter', this._config.battery_tap_action, this._config.battery_entity);
+          this._attachMeterClickHandler('#grid-meter', this._config.grid_tap_action, this._config.grid_entity);
+          this._attachMeterClickHandler('#load-meter', this._config.load_tap_action, this._config.load_entity);
+        }
+        
         // Start each meter's animation
         productionMeter.startAnimation();
         batteryMeter.startAnimation();
@@ -392,6 +404,85 @@ class EnergyFlowCard extends HTMLElement {
     }
     // Fall back to default icon
     return fallback;
+  }
+
+  private _handleAction(actionConfig: any | undefined, entityId: string): void {
+    if (!this._hass) return;
+    
+    // Default to more-info if no action configured
+    const config = actionConfig || { action: 'more-info' };
+    const action = config.action || 'more-info';
+    
+    switch (action) {
+      case 'more-info':
+        const entityToShow = config.entity || entityId;
+        this._fireEvent('hass-more-info', { entityId: entityToShow });
+        break;
+        
+      case 'navigate':
+        if (config.navigation_path) {
+          history.pushState(null, '', config.navigation_path);
+          this._fireEvent('location-changed', { replace: config.navigation_replace || false });
+        }
+        break;
+        
+      case 'url':
+        if (config.url_path) {
+          window.open(config.url_path);
+        }
+        break;
+        
+      case 'toggle':
+        this._hass.callService('homeassistant', 'toggle', { entity_id: entityId });
+        break;
+        
+      case 'perform-action':
+        if (config.perform_action) {
+          const [domain, service] = config.perform_action.split('.');
+          this._hass.callService(domain, service, config.data || {}, config.target);
+        }
+        break;
+        
+      case 'assist':
+        this._fireEvent('show-dialog', {
+          dialogTag: 'ha-voice-command-dialog',
+          dialogParams: {
+            pipeline_id: config.pipeline_id || 'last_used',
+            start_listening: config.start_listening
+          }
+        });
+        break;
+        
+      case 'none':
+        // Do nothing
+        break;
+    }
+  }
+
+  private _fireEvent(type: string, detail: any = {}): void {
+    const event = new CustomEvent(type, {
+      detail,
+      bubbles: true,
+      composed: true
+    });
+    this.dispatchEvent(event);
+  }
+
+  private _attachMeterClickHandler(selector: string, actionConfig: any | undefined, entityId: string): void {
+    const element = this.querySelector(selector);
+    if (!element) return;
+    
+    // Add cursor pointer style
+    (element as HTMLElement).style.cursor = 'pointer';
+    
+    // Remove any existing click listener
+    const newElement = element.cloneNode(true);
+    element.parentNode?.replaceChild(newElement, element);
+    
+    // Add click listener
+    newElement.addEventListener('click', () => {
+      this._handleAction(actionConfig, entityId);
+    });
   }
 
   _createMeterDefs() {
@@ -934,6 +1025,10 @@ class EnergyFlowCard extends HTMLElement {
               transition: width 0.5s ease-out;
               position: relative;
               overflow: hidden;
+              cursor: pointer;
+            }
+            .bar-segment:hover {
+              filter: brightness(1.2);
             }
             .bar-segment-content {
               display: flex;
@@ -974,6 +1069,10 @@ class EnergyFlowCard extends HTMLElement {
               display: flex;
               align-items: center;
               gap: 8px;
+              cursor: pointer;
+            }
+            .load-value:hover {
+              filter: brightness(1.1);
             }
             .load-icon {
               width: 28px;
@@ -1026,6 +1125,38 @@ class EnergyFlowCard extends HTMLElement {
         </ha-card>
       `;
       this._lastViewMode = 'compact';
+      
+      // Attach click handlers to compact view elements
+      requestAnimationFrame(() => {
+        if (this._config) {
+          // Attach handlers to segments
+          const productionSeg = this.querySelector('#production-segment');
+          const batterySeg = this.querySelector('#battery-segment');
+          const gridSeg = this.querySelector('#grid-segment');
+          const loadValue = this.querySelector('.load-value');
+          
+          if (productionSeg) {
+            productionSeg.addEventListener('click', () => {
+              this._handleAction(this._config!.production_tap_action, this._config!.production_entity);
+            });
+          }
+          if (batterySeg) {
+            batterySeg.addEventListener('click', () => {
+              this._handleAction(this._config!.battery_tap_action, this._config!.battery_entity);
+            });
+          }
+          if (gridSeg) {
+            gridSeg.addEventListener('click', () => {
+              this._handleAction(this._config!.grid_tap_action, this._config!.grid_entity);
+            });
+          }
+          if (loadValue) {
+            loadValue.addEventListener('click', () => {
+              this._handleAction(this._config!.load_tap_action, this._config!.load_entity);
+            });
+          }
+        }
+      });
     }
 
     // Update segment widths and labels (wrapped in requestAnimationFrame to ensure DOM has settled)
