@@ -1027,49 +1027,54 @@ class EnergyFlowCard extends HTMLElement {
       this._lastViewMode = 'compact';
     }
 
-    // Update segment widths and labels
-    const productionSegment = this.querySelector('#production-segment');
-    const batterySegment = this.querySelector('#battery-segment');
-    const gridSegment = this.querySelector('#grid-segment');
-    const loadValueText = this.querySelector('#load-value-text');
+    // Update segment widths and labels (wrapped in requestAnimationFrame to ensure DOM has settled)
+    const updateSegments = () => {
+      const productionSegment = this.querySelector('#production-segment');
+      const batterySegment = this.querySelector('#battery-segment');
+      const gridSegment = this.querySelector('#grid-segment');
+      const loadValueText = this.querySelector('#load-value-text');
 
-    if (productionSegment) {
-      (productionSegment as HTMLElement).style.width = `${productionPercent}%`;
-      const label = productionSegment.querySelector('.bar-segment-label');
-      if (label && productionValue > 0) {
-        label.textContent = `${Math.round(productionValue)}W`;
+      if (productionSegment) {
+        (productionSegment as HTMLElement).style.width = `${productionPercent}%`;
+        const label = productionSegment.querySelector('.bar-segment-label');
+        if (label && productionValue > 0) {
+          label.textContent = `${Math.round(productionValue)}W`;
+        }
+        // Calculate pixel width for visibility logic
+        const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
+        const pixelWidth = (productionPercent / 100) * (barContainer?.offsetWidth || 0);
+        this._updateSegmentVisibility(productionSegment, pixelWidth, productionValue > 0);
       }
-      // Calculate pixel width for visibility logic
-      const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
-      const pixelWidth = (productionPercent / 100) * (barContainer?.offsetWidth || 0);
-      this._updateSegmentVisibility(productionSegment, pixelWidth, productionValue > 0);
-    }
 
-    if (batterySegment) {
-      (batterySegment as HTMLElement).style.width = `${batteryPercent}%`;
-      const label = batterySegment.querySelector('.bar-segment-label');
-      if (label && batteryToLoad > 0) {
-        label.textContent = `${Math.round(batteryToLoad)}W`;
+      if (batterySegment) {
+        (batterySegment as HTMLElement).style.width = `${batteryPercent}%`;
+        const label = batterySegment.querySelector('.bar-segment-label');
+        if (label && batteryToLoad > 0) {
+          label.textContent = `${Math.round(batteryToLoad)}W`;
+        }
+        const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
+        const pixelWidth = (batteryPercent / 100) * (barContainer?.offsetWidth || 0);
+        this._updateSegmentVisibility(batterySegment, pixelWidth, batteryToLoad > 0);
       }
-      const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
-      const pixelWidth = (batteryPercent / 100) * (barContainer?.offsetWidth || 0);
-      this._updateSegmentVisibility(batterySegment, pixelWidth, batteryToLoad > 0);
-    }
 
-    if (gridSegment) {
-      (gridSegment as HTMLElement).style.width = `${gridPercent}%`;
-      const label = gridSegment.querySelector('.bar-segment-label');
-      if (label && gridToLoad > 0) {
-        label.textContent = `${Math.round(gridToLoad)}W`;
+      if (gridSegment) {
+        (gridSegment as HTMLElement).style.width = `${gridPercent}%`;
+        const label = gridSegment.querySelector('.bar-segment-label');
+        if (label && gridToLoad > 0) {
+          label.textContent = `${Math.round(gridToLoad)}W`;
+        }
+        const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
+        const pixelWidth = (gridPercent / 100) * (barContainer?.offsetWidth || 0);
+        this._updateSegmentVisibility(gridSegment, pixelWidth, gridToLoad > 0);
       }
-      const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
-      const pixelWidth = (gridPercent / 100) * (barContainer?.offsetWidth || 0);
-      this._updateSegmentVisibility(gridSegment, pixelWidth, gridToLoad > 0);
-    }
 
-    if (loadValueText) {
-      loadValueText.textContent = String(Math.round(load));
-    }
+      if (loadValueText) {
+        loadValueText.textContent = String(Math.round(load));
+      }
+    };
+
+    // Wait for DOM to settle before calculating widths
+    requestAnimationFrame(updateSegments)
   }
 
   private _updateSegmentVisibility(segment: Element, pixelWidth: number, hasValue: boolean): void {
