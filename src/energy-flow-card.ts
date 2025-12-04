@@ -889,10 +889,10 @@ class EnergyFlowCard extends HTMLElement {
     const batteryPercent = (batteryToLoad / total) * 100;
     const gridPercent = (gridToLoad / total) * 100;
 
-    // Colors
-    const productionColor = '#4caf50'; // Green
-    const batteryColor = '#2196f3'; // Blue
-    const gridColor = '#f44336'; // Red
+    // Colors (darker hues - 50% brightness)
+    const productionColor = '#256028'; // Dark green
+    const batteryColor = '#104b79'; // Dark blue
+    const gridColor = '#7a211b'; // Dark red
 
     // Only render if structure doesn't exist or needs update
     if (!this.querySelector('.compact-view') || this._lastViewMode !== 'compact') {
@@ -930,7 +930,7 @@ class EnergyFlowCard extends HTMLElement {
               gap: 6px;
               font-size: 14px;
               font-weight: 600;
-              color: rgba(0, 0, 0, 0.8);
+              color: rgb(255, 255, 255);
               transition: width 0.5s ease-out;
               position: relative;
               overflow: hidden;
@@ -945,10 +945,11 @@ class EnergyFlowCard extends HTMLElement {
               width: 24px;
               height: 24px;
               flex-shrink: 0;
-              opacity: 0.9;
+              opacity: 1;
+              color: rgb(255, 255, 255);
             }
             .bar-segment-label {
-              text-shadow: 0 1px 2px rgba(255,255,255,0.3);
+              text-shadow: 0 1px 2px rgba(0,0,0,0.3);
             }
             .bar-segment[data-width-px] .bar-segment-label {
               display: none;
