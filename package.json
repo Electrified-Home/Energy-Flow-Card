@@ -3,11 +3,22 @@
   "version": "1.0.0",
   "description": "Home Assistant Energy Flow Card",
   "scripts": {
-    "serve": "serve . -p 8080",
-    "start": "serve . -p 8080"
+    "build": "vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
-    "serve": "^14.2.1"
+    "@vitest/coverage-v8": "^4.0.15",
+    "@vitest/ui": "^4.0.15",
+    "concurrently": "^8.2.2",
+    "jsdom": "^27.2.0",
+    "serve": "^14.2.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.6",
+    "vitest": "^4.0.15"
   },
   "keywords": [
     "home-assistant",

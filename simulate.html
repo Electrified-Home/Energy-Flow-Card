@@ -24,22 +24,27 @@
     }
 
     .container {
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      gap: 20px;
+      align-items: start;
     }
 
     .controls {
       background: var(--card-background-color);
       padding: 20px;
       border-radius: 8px;
-      margin-bottom: 20px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
     }
 
     .control-group {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
       margin-bottom: 20px;
     }
 
@@ -63,14 +68,20 @@
       color: var(--primary-text-color);
     }
 
+    .control-item small {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
     .presets {
       display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
+      flex-direction: column;
+      gap: 6px;
     }
 
     .preset-btn {
-      padding: 8px 16px;
+      padding: 10px 16px;
       background: var(--primary-background-color);
       border: 1px solid var(--divider-color);
       border-radius: 4px;
@@ -78,6 +89,8 @@
       font-size: 14px;
       transition: all 0.2s;
       color: var(--primary-text-color);
+      text-align: left;
+      width: 100%;
     }
 
     .preset-btn:hover {
@@ -94,6 +107,7 @@
     h1 {
       margin: 0 0 20px 0;
       color: var(--primary-text-color);
+      grid-column: 1 / -1;
     }
 
     h3 {
@@ -185,6 +199,19 @@
         <button class="preset-btn" onclick="setScenario('import')">🔌 Heavy Import</button>
         <button class="preset-btn" onclick="setScenario('battery-charge')">🔋 Battery Charging</button>
         <button class="preset-btn" onclick="setScenario('battery-discharge')">🔋 Battery Discharging</button>
+      </div>
+
+      <h3>Anomalous Conditions</h3>
+      <div class="presets">
+        <button class="preset-btn" onclick="setScenario('overflow')">⚠️ Production Overflow</button>
+        <button class="preset-btn" onclick="setScenario('underflow')">⚠️ Load Underflow</button>
+        <button class="preset-btn" onclick="setScenario('tiny-battery')">🔋 Tiny Battery (5W)</button>
+        <button class="preset-btn" onclick="setScenario('imbalanced')">⚖️ Sensor Imbalance</button>
+        <button class="preset-btn" onclick="setScenario('grid-zero-surplus')">🔌 Grid=0 + Surplus</button>
+        <button class="preset-btn" onclick="setScenario('grid-zero-deficit')">🔌 Grid=0 + Deficit</button>
+        <button class="preset-btn" onclick="setScenario('all-zero')">🚫 All Zero</button>
+        <button class="preset-btn" onclick="setScenario('micro-export')">⬇️ Micro Export (-5W)</button>
+        <button class="preset-btn" onclick="setScenario('threshold-test')">🎯 Threshold Test (10W)</button>
       </div>
     </div>
 
@@ -348,13 +375,25 @@
     
     function setScenario(scenario) {
       const scenarios = {
+        // Normal scenarios
         'sunny': { grid: -1500, load: 2000, production: 4000, battery: -500 },
         'night': { grid: 1500, load: 1000, production: 0, battery: 500 },
         'cloudy': { grid: 500, load: 2000, production: 1000, battery: 500 },
         'export': { grid: -3000, load: 1000, production: 5000, battery: -1000 },
         'import': { grid: 3000, load: 4000, production: 500, battery: 500 },
         'battery-charge': { grid: 0, load: 2000, production: 3500, battery: -1500 },
-        'battery-discharge': { grid: 0, load: 3000, production: 1000, battery: 2000 }
+        'battery-discharge': { grid: 0, load: 3000, production: 1000, battery: 2000 },
+        
+        // Anomalous conditions
+        'overflow': { grid: 0, load: 1000, production: 5000, battery: 0 },
+        'underflow': { grid: 0, load: 3000, production: 500, battery: 0 },
+        'tiny-battery': { grid: 2000, load: 3000, production: 1000, battery: 5 },
+        'imbalanced': { grid: -50, load: 1800, production: 2200, battery: -300 },
+        'grid-zero-surplus': { grid: 0, load: 800, production: 3000, battery: -500 },
+        'grid-zero-deficit': { grid: 0, load: 4000, production: 1200, battery: 300 },
+        'all-zero': { grid: 0, load: 0, production: 0, battery: 0 },
+        'micro-export': { grid: -5, load: 1000, production: 1005, battery: 0 },
+        'threshold-test': { grid: 10, load: 1010, production: 1000, battery: 0 }
       };
 
       if (scenarios[scenario]) {
