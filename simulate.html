@@ -172,7 +172,13 @@
           <select id="view-mode-select" style="padding: 8px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--primary-background-color); color: var(--primary-text-color); font-size: 14px;">
             <option value="default">Default (Gauges)</option>
             <option value="compact">Compact Bar</option>
+            <option value="compact-battery">Compact with Battery</option>
           </select>
+        </div>
+        <div class="control-item">
+          <label for="battery-soc-input">Battery SOC (%)</label>
+          <input type="number" id="battery-soc-input" value="85" step="0.1" min="0" max="100">
+          <small>For compact-battery view</small>
         </div>
         <div class="control-item">
           <label>
@@ -212,6 +218,7 @@
         <button class="preset-btn" onclick="setScenario('all-zero')">🚫 All Zero</button>
         <button class="preset-btn" onclick="setScenario('micro-export')">⬇️ Micro Export (-5W)</button>
         <button class="preset-btn" onclick="setScenario('threshold-test')">🎯 Threshold Test (10W)</button>
+        <button class="preset-btn" onclick="setScenario('battery-split')">🔋⚡ Battery → Load + Grid</button>
       </div>
     </div>
 
@@ -277,6 +284,7 @@
           'mdi:solar-power': 'M11.45,2V5.55L15,3.77L11.45,2M10.45,8L8,10.46L11,11.95L10.45,8M2,11.45L3.77,15L5.55,11.45H2M10,2H2V10A8,8 0 0,0 10,18A8,8 0 0,0 18,10C18,5.37 14.63,2 10,2Z',
           'mdi:battery': 'M16.67,4H15V2H9V4H7.33A1.33,1.33 0 0,0 6,5.33V20.67C6,21.4 6.6,22 7.33,22H16.67A1.33,1.33 0 0,0 18,20.67V5.33C18,4.6 17.4,4 16.67,4Z',
           'mdi:transmission-tower': 'M8.28,5.45L6.5,4.55L7.76,2.16L9.54,3.06M11,1H13V4.06L11,5.06M14.5,2.16L15.76,4.55L14,5.45L12.7,3.06M7.5,7L9,8.61L11,7.37V10H13V7.37L15,8.61L16.5,7L14.13,4.59L12,6.15L9.87,4.59M7.46,8L5.73,9.73L7.5,11.5L9.23,9.77M15,11.5L16.77,9.73L15.04,8L13.31,9.73M11,11V13H13V11M7,14V15H9.43L9,16.87L10.24,17.4L10.67,15.6L12,16.4L13.33,15.6L13.76,17.4L15,16.87L14.57,15H17V14H14L13.33,11.22L12,12.4L10.67,11.22L10,14M5,15V17H7L6.5,19H8L8.5,17H10L10.5,19H12L11.5,17H13L13.5,19H15L14.5,17H16L16.5,19H18L17.5,17H19V15H17L16,10L14.5,11.5L15.37,15H8.63L9.5,11.5L8,10L7,15M8,21V22H9V21M11,21V22H13V21M15,21V22H16V21',
+          'mdi:home': 'M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z',
           'mdi:home-lightning-bolt': 'M12 3L2 12H5V20H19V12H22L12 3M12 18C10.9 18 10 17.11 10 16H9C9 17.66 10.34 19 12 19C13.66 19 15 17.66 15 16H14C14 17.11 13.11 18 12 18M11 11V13H10L12 16L14 13H13V11H11Z',
           'mdi:solar-power-variant': 'M11.45,2V5.55L15,3.77L11.45,2M10.45,8L8,10.46L11,11.95L10.45,8M2,11.45L3.77,15L5.55,11.45H2M10,2H2V10A8,8 0 0,0 10,18A8,8 0 0,0 18,10C18,5.37 14.63,2 10,2Z',
           'mdi:home-battery': 'M12,3L2,12H5V20H19V12H22M11,18V14H8L13,9V13H16'
@@ -304,7 +312,8 @@
           'sensor.grid': { state: '0', attributes: { unit_of_measurement: 'W' } },
           'sensor.load': { state: '2000', attributes: { unit_of_measurement: 'W' } },
           'sensor.production': { state: '3000', attributes: { unit_of_measurement: 'W' } },
-          'sensor.battery': { state: '-500', attributes: { unit_of_measurement: 'W' } }
+          'sensor.battery': { state: '-500', attributes: { unit_of_measurement: 'W' } },
+          'sensor.battery_soc': { state: '85', attributes: { unit_of_measurement: '%' } }
         };
       }
 
@@ -326,6 +335,7 @@
       load_entity: 'sensor.load',
       production_entity: 'sensor.production',
       battery_entity: 'sensor.battery',
+      battery_soc_entity: 'sensor.battery_soc',
       invert_battery_data: false,
       invert_battery_view: false
     });
@@ -338,6 +348,7 @@
       const load = parseFloat(document.getElementById('load-input').value) || 0;
       const production = parseFloat(document.getElementById('production-input').value) || 0;
       const battery = parseFloat(document.getElementById('battery-input').value) || 0;
+      const batterySoc = parseFloat(document.getElementById('battery-soc-input').value) || 0;
       const invertData = document.getElementById('invert-battery-data').checked;
       const invertView = document.getElementById('invert-battery-view').checked;
       const viewMode = document.getElementById('view-mode-select').value;
@@ -346,6 +357,7 @@
       hass.updateState('sensor.load', load);
       hass.updateState('sensor.production', production);
       hass.updateState('sensor.battery', battery);
+      hass.updateState('sensor.battery_soc', batterySoc);
 
       // Update config with invert options
       card.setConfig({
@@ -354,6 +366,7 @@
         load_entity: 'sensor.load',
         production_entity: 'sensor.production',
         battery_entity: 'sensor.battery',
+        battery_soc_entity: 'sensor.battery_soc',
         invert_battery_data: invertData,
         invert_battery_view: invertView
       });
@@ -366,6 +379,7 @@
     document.getElementById('load-input').addEventListener('input', updateCard);
     document.getElementById('production-input').addEventListener('input', updateCard);
     document.getElementById('battery-input').addEventListener('input', updateCard);
+    document.getElementById('battery-soc-input').addEventListener('input', updateCard);
     document.getElementById('invert-battery-data').addEventListener('change', updateCard);
     document.getElementById('invert-battery-view').addEventListener('change', updateCard);
     document.getElementById('view-mode-select').addEventListener('change', updateCard);
@@ -383,6 +397,7 @@
         'import': { grid: 3000, load: 4000, production: 500, battery: 500 },
         'battery-charge': { grid: 0, load: 2000, production: 3500, battery: -1500 },
         'battery-discharge': { grid: 0, load: 3000, production: 1000, battery: 2000 },
+        'battery-split': { grid: -1000, load: 2000, production: 1000, battery: 2000 },
         
         // Anomalous conditions
         'overflow': { grid: 0, load: 1000, production: 5000, battery: 0 },

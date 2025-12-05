@@ -25,6 +25,7 @@ class EnergyFlowCard extends HTMLElement {
   private _hass?: HomeAssistant;
   private _lastValues?: { grid: number; production: number; load: number; battery: number };
   private _lastViewMode?: string;
+  private _iconExtractionTimeouts: Set<number>;
 
   constructor() {
     super();
@@ -34,6 +35,7 @@ class EnergyFlowCard extends HTMLElement {
     this._lastAnimationTime = null;
     this._iconCache = new Map();
     this._iconsExtracted = false;
+    this._iconExtractionTimeouts = new Set();
     
     // Meter instances
     this._meters = new Map();
@@ -73,7 +75,7 @@ class EnergyFlowCard extends HTMLElement {
   static getConfigForm() {
     return {
       schema: [
-        { name: "view_mode", label: "View Mode", selector: { select: { options: [{value: "default", label: "Default"}, {value: "compact", label: "Compact Bar"}] } } },
+        { name: "view_mode", label: "View Mode", selector: { select: { options: [{value: "default", label: "Default"}, {value: "compact", label: "Compact Bar"}, {value: "compact-battery", label: "Compact with Battery"}] } } },
         { name: "grid_entity", label: "Grid", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
         { name: "grid_name", selector: { entity_name: {} }, context: { entity: "grid_entity" } },
         { name: "grid_icon", selector: { icon: {} }, context: { icon_entity: "grid_entity" } },
@@ -96,6 +98,7 @@ class EnergyFlowCard extends HTMLElement {
         { name: "battery_min", label: "Battery Min (W)", selector: { number: { mode: "box" } } },
         { name: "battery_max", label: "Battery Max (W)", selector: { number: { mode: "box" } } },
         { name: "battery_tap_action", label: "Battery Tap Action", selector: { "ui-action": {} } },
+        { name: "battery_soc_entity", label: "Battery SOC (%) Entity", selector: { entity: { domain: "sensor" } } },
         { name: "invert_battery_data", label: "Invert Battery Data", selector: { boolean: {} } },
         { name: "invert_battery_view", label: "Invert Battery View", selector: { boolean: {} } },
         { name: "show_plus", label: "Show + Sign", selector: { boolean: {} } }
@@ -126,8 +129,7 @@ class EnergyFlowCard extends HTMLElement {
     }
     this._resizeObserver.observe(this);
     
-    // Start flow animation loop
-    this._startFlowAnimationLoop();
+    // Animation loop will be started on first render to avoid race conditions
   }
 
   disconnectedCallback() {
@@ -177,8 +179,8 @@ class EnergyFlowCard extends HTMLElement {
 
     // Check view mode
     const viewMode = this._config.view_mode || 'default';
-    if (viewMode === 'compact') {
-      this._renderCompactView(grid, load, production, battery);
+    if (viewMode === 'compact' || viewMode === 'compact-battery') {
+      this._renderCompactView(grid, load, production, battery, viewMode);
       return;
     }
 
@@ -364,6 +366,11 @@ class EnergyFlowCard extends HTMLElement {
 
     // Store values for resize handler and draw flows
     this._lastValues = { grid, production, load, battery };
+    
+    // Start animation loop on first render (not in connectedCallback to avoid race conditions)
+    if (!this._animationFrameId) {
+      this._startFlowAnimationLoop();
+    }
     
     // Extract icon paths if not already done
     if (!this._iconsExtracted) {
@@ -841,7 +848,8 @@ class EnergyFlowCard extends HTMLElement {
       const attemptExtraction = (attempt = 0, maxAttempts = 10) => {
         const delay = attempt * 100; // 0ms, 100ms, 200ms, 300ms, etc.
         
-        setTimeout(() => {
+        const timeoutId = window.setTimeout(() => {
+          this._iconExtractionTimeouts.delete(timeoutId);
           try {
             const shadowRoot = iconSource.shadowRoot;
             if (!shadowRoot) {
@@ -900,6 +908,7 @@ class EnergyFlowCard extends HTMLElement {
             }
           }
         }, delay);
+        this._iconExtractionTimeouts.add(timeoutId);
       };
       
       // Start extraction attempts
@@ -967,7 +976,7 @@ class EnergyFlowCard extends HTMLElement {
     }
   }
 
-  private _renderCompactView(grid: number, load: number, production: number, battery: number): void {
+  private _renderCompactView(grid: number, load: number, production: number, battery: number, viewMode: 'compact' | 'compact-battery'): void {
     // Use the same flow calculator to get accurate contributions to load
     const flows = this._calculateFlows(grid, production, load, battery);
     
@@ -983,11 +992,41 @@ class EnergyFlowCard extends HTMLElement {
 
     // Colors (darker hues - 50% brightness)
     const productionColor = '#256028'; // Dark green
-    const batteryColor = '#104b79'; // Dark blue
-    const gridColor = '#7a211b'; // Dark red
+    const batteryColor = '#104b79'; // Dark blue (load)
+    const gridColor = '#7a211b'; // Dark red (import)
+    const returnColor = '#7a6b1b'; // Dark yellow (export)
+
+    // Get battery SOC if available
+    let batterySoc: number | null = null;
+    if (viewMode === 'compact-battery' && this._config?.battery_soc_entity) {
+      const socState = this._getEntityState(this._config.battery_soc_entity);
+      batterySoc = parseFloat(socState?.state ?? '0') || 0;
+    }
+
+    // Calculate battery bar percentages
+    let batteryGridPercent = 0;  // Red when charging from grid, Yellow when discharging to grid
+    let batteryLoadPercent = 0;  // Blue when discharging to load
+    let batteryProdPercent = 0;  // Green when charging from production
+    
+    if (viewMode === 'compact-battery') {
+      if (battery < 0) {
+        // Battery is CHARGING (negative value) - show sources
+        const batteryCharging = Math.abs(battery);
+        const batteryTotal = batteryCharging || 1;
+        batteryGridPercent = (flows.gridToBattery / batteryTotal) * 100;      // Red (grid to battery)
+        batteryProdPercent = (flows.productionToBattery / batteryTotal) * 100; // Green (production to battery)
+      } else if (battery > 0) {
+        // Battery is DISCHARGING (positive value) - show destinations
+        const batteryTotal = battery || 1;
+        batteryLoadPercent = (flows.batteryToLoad / batteryTotal) * 100;       // Blue (battery to load)
+        // Remaining battery discharge goes to grid (part of export)
+        const batteryToGrid = battery - flows.batteryToLoad;
+        batteryGridPercent = (batteryToGrid / batteryTotal) * 100;             // Yellow (battery to grid)
+      }
+    }
 
     // Only render if structure doesn't exist or needs update
-    if (!this.querySelector('.compact-view') || this._lastViewMode !== 'compact') {
+    if (!this.querySelector('.compact-view') || this._lastViewMode !== viewMode) {
       this.innerHTML = `
         <ha-card>
           <style>
@@ -1000,6 +1039,12 @@ class EnergyFlowCard extends HTMLElement {
               box-sizing: border-box;
             }
             .compact-view {
+              display: flex;
+              flex-direction: column;
+              gap: ${viewMode === 'compact-battery' ? '12px' : '0'};
+              width: 100%;
+            }
+            .compact-row {
               display: flex;
               align-items: center;
               gap: 12px;
@@ -1060,7 +1105,7 @@ class EnergyFlowCard extends HTMLElement {
             .bar-segment[data-width-px="show-label"] .bar-segment-icon {
               display: block;
             }
-            .load-value {
+            .row-value {
               font-size: 24px;
               font-weight: 600;
               color: rgb(255, 255, 255);
@@ -1072,10 +1117,14 @@ class EnergyFlowCard extends HTMLElement {
               gap: 8px;
               cursor: pointer;
             }
-            .load-value:hover {
+            .row-value:hover {
               filter: brightness(1.1);
             }
-            .load-icon {
+            .row-value.battery-discharge {
+              text-align: left;
+              flex-direction: row-reverse;
+            }
+            .row-icon {
               width: 28px;
               height: 28px;
               flex-shrink: 0;
@@ -1083,58 +1132,100 @@ class EnergyFlowCard extends HTMLElement {
               display: flex;
               align-items: center;
             }
-            .load-text {
+            .row-text {
               display: flex;
               align-items: baseline;
               gap: 4px;
               line-height: 1;
             }
-            .load-unit {
+            .row-unit {
               font-size: 14px;
               color: rgb(160, 160, 160);
               margin-left: 4px;
             }
           </style>
           <div class="compact-view">
-            <div class="bar-container">
-              <div id="grid-segment" class="bar-segment" style="background: ${gridColor}; width: ${gridPercent}%;">
-                <div class="bar-segment-content">
-                  <ha-icon class="bar-segment-icon" icon="${this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower')}"></ha-icon>
-                  <span class="bar-segment-label"></span>
+            <!-- Load Row -->
+            <div class="compact-row">
+              <div class="bar-container">
+                <div id="grid-segment" class="bar-segment" style="background: ${gridColor}; width: ${gridPercent}%;">
+                  <div class="bar-segment-content">
+                    <ha-icon class="bar-segment-icon" icon="${this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower')}"></ha-icon>
+                    <span class="bar-segment-label"></span>
+                  </div>
+                </div>
+                <div id="battery-segment" class="bar-segment" style="background: ${batteryColor}; width: ${batteryPercent}%;">
+                  <div class="bar-segment-content">
+                    <ha-icon class="bar-segment-icon" icon="${this._getIcon('battery_icon', 'battery_entity', 'mdi:battery')}"></ha-icon>
+                    <span class="bar-segment-label"></span>
+                  </div>
+                </div>
+                <div id="production-segment" class="bar-segment" style="background: ${productionColor}; width: ${productionPercent}%;">
+                  <div class="bar-segment-content">
+                    <ha-icon class="bar-segment-icon" icon="${this._getIcon('production_icon', 'production_entity', 'mdi:solar-power')}"></ha-icon>
+                    <span class="bar-segment-label"></span>
+                  </div>
                 </div>
               </div>
-              <div id="battery-segment" class="bar-segment" style="background: ${batteryColor}; width: ${batteryPercent}%;">
-                <div class="bar-segment-content">
-                  <ha-icon class="bar-segment-icon" icon="${this._getIcon('battery_icon', 'battery_entity', 'mdi:battery')}"></ha-icon>
-                  <span class="bar-segment-label"></span>
-                </div>
-              </div>
-              <div id="production-segment" class="bar-segment" style="background: ${productionColor}; width: ${productionPercent}%;">
-                <div class="bar-segment-content">
-                  <ha-icon class="bar-segment-icon" icon="${this._getIcon('production_icon', 'production_entity', 'mdi:solar-power')}"></ha-icon>
-                  <span class="bar-segment-label"></span>
+              <div class="row-value">
+                <ha-icon class="row-icon" icon="${this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt')}"></ha-icon>
+                <div class="row-text">
+                  <span id="load-value-text">${Math.round(load)}</span><span class="row-unit">W</span>
                 </div>
               </div>
             </div>
-            <div class="load-value">
-              <ha-icon class="load-icon" icon="${this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt')}"></ha-icon>
-              <div class="load-text">
-                <span id="load-value-text">${Math.round(load)}</span><span class="load-unit">W</span>
+            ${viewMode === 'compact-battery' ? `
+            <!-- Battery Row -->
+            <div class="compact-row" id="battery-row">
+              <div class="row-value" id="battery-soc-left" style="display: none;">
+                <ha-icon class="row-icon" icon="${this._getIcon('battery_icon', 'battery_entity', 'mdi:battery')}"></ha-icon>
+                <div class="row-text">
+                  <span id="battery-soc-text-left">${batterySoc !== null ? batterySoc.toFixed(1) : '--'}</span><span class="row-unit">%</span>
+                </div>
+              </div>
+              <div class="bar-container">
+                <!-- Color order: red, yellow, blue, green (left to right) -->
+                <div id="battery-grid-segment" class="bar-segment" style="background: ${battery < 0 ? gridColor : returnColor}; width: ${batteryGridPercent}%;">
+                  <div class="bar-segment-content">
+                    <ha-icon class="bar-segment-icon" icon="${this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower')}"></ha-icon>
+                    <span class="bar-segment-label"></span>
+                  </div>
+                </div>
+                <div id="battery-load-segment" class="bar-segment" style="background: ${batteryColor}; width: ${batteryLoadPercent}%;">
+                  <div class="bar-segment-content">
+                    <ha-icon class="bar-segment-icon" icon="${this._getIcon('load_icon', 'load_entity', 'mdi:home')}"></ha-icon>
+                    <span class="bar-segment-label"></span>
+                  </div>
+                </div>
+                <div id="battery-production-segment" class="bar-segment" style="background: ${productionColor}; width: ${batteryProdPercent}%;">
+                  <div class="bar-segment-content">
+                    <ha-icon class="bar-segment-icon" icon="${this._getIcon('production_icon', 'production_entity', 'mdi:solar-power')}"></ha-icon>
+                    <span class="bar-segment-label"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="row-value" id="battery-soc-right">
+                <ha-icon class="row-icon" icon="${this._getIcon('battery_icon', 'battery_entity', 'mdi:battery')}"></ha-icon>
+                <div class="row-text">
+                  <span id="battery-soc-text-right">${batterySoc !== null ? batterySoc.toFixed(1) : '--'}</span><span class="row-unit">%</span>
+                </div>
               </div>
             </div>
+            ` : ''}
           </div>
         </ha-card>
       `;
-      this._lastViewMode = 'compact';
+      this._lastViewMode = viewMode;
       
       // Attach click handlers to compact view elements
       requestAnimationFrame(() => {
         if (this._config) {
-          // Attach handlers to segments
+          // Attach handlers to load row segments
           const productionSeg = this.querySelector('#production-segment');
           const batterySeg = this.querySelector('#battery-segment');
           const gridSeg = this.querySelector('#grid-segment');
-          const loadValue = this.querySelector('.load-value');
+          const loadValues = this.querySelectorAll('.row-value');
+          const loadValue = loadValues[0]; // First row-value is the load
           
           if (productionSeg) {
             productionSeg.addEventListener('click', () => {
@@ -1156,6 +1247,41 @@ class EnergyFlowCard extends HTMLElement {
               this._handleAction(this._config!.load_tap_action, this._config!.load_entity);
             });
           }
+          
+          // Attach handlers to battery row if in compact-battery mode
+          if (viewMode === 'compact-battery') {
+            const batteryProdSeg = this.querySelector('#battery-production-segment');
+            const batteryLoadSeg = this.querySelector('#battery-load-segment');
+            const batteryGridSeg = this.querySelector('#battery-grid-segment');
+            const batterySocLeft = this.querySelector('#battery-soc-left');
+            const batterySocRight = this.querySelector('#battery-soc-right');
+            
+            if (batteryProdSeg) {
+              batteryProdSeg.addEventListener('click', () => {
+                this._handleAction(this._config!.production_tap_action, this._config!.production_entity);
+              });
+            }
+            if (batteryLoadSeg) {
+              batteryLoadSeg.addEventListener('click', () => {
+                this._handleAction(this._config!.load_tap_action, this._config!.load_entity);
+              });
+            }
+            if (batteryGridSeg) {
+              batteryGridSeg.addEventListener('click', () => {
+                this._handleAction(this._config!.grid_tap_action, this._config!.grid_entity);
+              });
+            }
+            if (batterySocLeft) {
+              batterySocLeft.addEventListener('click', () => {
+                this._handleAction(this._config!.battery_tap_action, this._config!.battery_entity);
+              });
+            }
+            if (batterySocRight) {
+              batterySocRight.addEventListener('click', () => {
+                this._handleAction(this._config!.battery_tap_action, this._config!.battery_entity);
+              });
+            }
+          }
         }
       });
     }
@@ -1171,7 +1297,7 @@ class EnergyFlowCard extends HTMLElement {
         (productionSegment as HTMLElement).style.width = `${productionPercent}%`;
         const label = productionSegment.querySelector('.bar-segment-label');
         if (label && productionValue > 0) {
-          label.textContent = `${Math.round(productionValue)}W`;
+          label.textContent = `${Math.round(productionPercent)}%`;
         }
         // Calculate pixel width for visibility logic
         const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
@@ -1183,7 +1309,7 @@ class EnergyFlowCard extends HTMLElement {
         (batterySegment as HTMLElement).style.width = `${batteryPercent}%`;
         const label = batterySegment.querySelector('.bar-segment-label');
         if (label && batteryToLoad > 0) {
-          label.textContent = `${Math.round(batteryToLoad)}W`;
+          label.textContent = `${Math.round(batteryPercent)}%`;
         }
         const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
         const pixelWidth = (batteryPercent / 100) * (barContainer?.offsetWidth || 0);
@@ -1194,7 +1320,7 @@ class EnergyFlowCard extends HTMLElement {
         (gridSegment as HTMLElement).style.width = `${gridPercent}%`;
         const label = gridSegment.querySelector('.bar-segment-label');
         if (label && gridToLoad > 0) {
-          label.textContent = `${Math.round(gridToLoad)}W`;
+          label.textContent = `${Math.round(gridPercent)}%`;
         }
         const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
         const pixelWidth = (gridPercent / 100) * (barContainer?.offsetWidth || 0);
@@ -1203,6 +1329,104 @@ class EnergyFlowCard extends HTMLElement {
 
       if (loadValueText) {
         loadValueText.textContent = String(Math.round(load));
+      }
+      
+      // Update battery row segments if in compact-battery mode
+      if (viewMode === 'compact-battery') {
+        const batteryGridSegment = this.querySelector('#battery-grid-segment');
+        const batteryLoadSegment = this.querySelector('#battery-load-segment');
+        const batteryProdSegment = this.querySelector('#battery-production-segment');
+        const batterySocLeft = this.querySelector('#battery-soc-left') as HTMLElement | null;
+        const batterySocRight = this.querySelector('#battery-soc-right') as HTMLElement | null;
+        const batterySocTextLeft = this.querySelector('#battery-soc-text-left');
+        const batterySocTextRight = this.querySelector('#battery-soc-text-right');
+        const batteryBarContainers = this.querySelectorAll('.bar-container');
+        const batteryBarContainer = batteryBarContainers[1] as HTMLElement | null; // Second bar container is battery
+        
+        // Calculate percentages and values based on charging/discharging state
+        let gridPercent = 0;
+        let loadPercent = 0;
+        let prodPercent = 0;
+        let gridValue = 0;
+        let loadValue = 0;
+        let prodValue = 0;
+        let gridIsImport = false; // Red = import, Yellow = export
+        
+        if (battery < 0) {
+          // CHARGING: show sources (production and/or grid charging battery)
+          // Percentage goes on RIGHT, bar on LEFT
+          const batteryCharging = Math.abs(battery);
+          const batteryTotal = batteryCharging || 1;
+          gridPercent = (flows.gridToBattery / batteryTotal) * 100;
+          prodPercent = (flows.productionToBattery / batteryTotal) * 100;
+          gridValue = flows.gridToBattery;
+          prodValue = flows.productionToBattery;
+          gridIsImport = true; // Red color
+          
+          if (batterySocLeft) batterySocLeft.style.display = 'none';
+          if (batterySocRight) batterySocRight.style.display = 'flex';
+          if (batterySocTextRight && batterySoc !== null) {
+            batterySocTextRight.textContent = batterySoc.toFixed(1);
+          }
+        } else if (battery > 0) {
+          // DISCHARGING: show destinations (battery going to load and/or grid)
+          // Percentage goes on LEFT, bar on RIGHT
+          const batteryTotal = battery || 1;
+          const batteryToGrid = battery - flows.batteryToLoad;
+          gridPercent = (batteryToGrid / batteryTotal) * 100;
+          loadPercent = (flows.batteryToLoad / batteryTotal) * 100;
+          gridValue = batteryToGrid;
+          loadValue = flows.batteryToLoad;
+          gridIsImport = false; // Yellow color
+          
+          if (batterySocLeft) batterySocLeft.style.display = 'flex';
+          if (batterySocRight) batterySocRight.style.display = 'none';
+          if (batterySocTextLeft && batterySoc !== null) {
+            batterySocTextLeft.textContent = batterySoc.toFixed(1);
+          }
+        } else {
+          // IDLE (battery = 0): show percentage on RIGHT (default), no bar segments
+          if (batterySocLeft) batterySocLeft.style.display = 'none';
+          if (batterySocRight) batterySocRight.style.display = 'flex';
+          if (batterySocTextRight && batterySoc !== null) {
+            batterySocTextRight.textContent = batterySoc.toFixed(1);
+          }
+        }
+        
+        // Update grid segment (red when charging from grid, yellow when discharging to grid)
+        if (batteryGridSegment) {
+          const gridColorToUse = gridIsImport ? '#7a211b' : '#7a6b1b'; // Red or Yellow
+          (batteryGridSegment as HTMLElement).style.width = `${gridPercent}%`;
+          (batteryGridSegment as HTMLElement).style.background = gridColorToUse;
+          const label = batteryGridSegment.querySelector('.bar-segment-label');
+          if (label && gridValue > 0) {
+            label.textContent = `${Math.round(gridValue)}W`;
+          }
+          const pixelWidth = (gridPercent / 100) * (batteryBarContainer?.offsetWidth || 0);
+          this._updateSegmentVisibility(batteryGridSegment, pixelWidth, gridValue > 0);
+        }
+        
+        // Update load segment (blue, only when discharging to load)
+        if (batteryLoadSegment) {
+          (batteryLoadSegment as HTMLElement).style.width = `${loadPercent}%`;
+          const label = batteryLoadSegment.querySelector('.bar-segment-label');
+          if (label && loadValue > 0) {
+            label.textContent = `${Math.round(loadValue)}W`;
+          }
+          const pixelWidth = (loadPercent / 100) * (batteryBarContainer?.offsetWidth || 0);
+          this._updateSegmentVisibility(batteryLoadSegment, pixelWidth, loadValue > 0);
+        }
+        
+        // Update production segment (green, only when charging from production)
+        if (batteryProdSegment) {
+          (batteryProdSegment as HTMLElement).style.width = `${prodPercent}%`;
+          const label = batteryProdSegment.querySelector('.bar-segment-label');
+          if (label && prodValue > 0) {
+            label.textContent = `${Math.round(prodValue)}W`;
+          }
+          const pixelWidth = (prodPercent / 100) * (batteryBarContainer?.offsetWidth || 0);
+          this._updateSegmentVisibility(batteryProdSegment, pixelWidth, prodValue > 0);
+        }
       }
     };
 
