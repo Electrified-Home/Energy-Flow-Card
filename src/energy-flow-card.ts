@@ -1372,7 +1372,8 @@ class EnergyFlowCard extends HTMLElement {
           // DISCHARGING: show destinations (battery going to load and/or grid)
           // Percentage goes on LEFT, bar on RIGHT
           const batteryTotal = battery || 1;
-          const batteryToGrid = battery - flows.batteryToLoad;
+          // Only show battery-to-grid if grid is actually exporting (negative)
+          const batteryToGrid = grid < -10 ? battery - flows.batteryToLoad : 0;
           gridPercent = (batteryToGrid / batteryTotal) * 100;
           loadPercent = (flows.batteryToLoad / batteryTotal) * 100;
           gridValue = batteryToGrid;
