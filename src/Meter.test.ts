@@ -18,7 +18,7 @@ describe('Meter', () => {
       expect(meter.icon).toBe('mdi:test');
       expect(meter.invertView).toBe(false);
       expect(meter.showPlus).toBe(false);
-      expect(meter.parentElement).toBe(null);
+      expect(meter.element).toBe(null);
     });
 
     test('should initialize with bidirectional configuration', () => {
@@ -223,9 +223,10 @@ describe('Meter', () => {
   });
 
   describe('SVG Generation', () => {
-    test('should generate valid SVG markup', () => {
+    test('should generate valid SVG element', () => {
       const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
-      const svg = meter.createSVG();
+      const element = meter.createElement();
+      const svg = element.outerHTML;
 
       expect(svg).toContain('<g transform=');
       expect(svg).toContain('id="clip-test-local"');
@@ -239,28 +240,32 @@ describe('Meter', () => {
 
     test('should include meter label in SVG', () => {
       const meter = new Meter('production', 500, 0, 5000, false, 'Production', 'mdi:solar-power', 'WATTS');
-      const svg = meter.createSVG();
+      const element = meter.createElement();
+      const svg = element.outerHTML;
 
       expect(svg).toContain('>Production</text>');
     });
 
     test('should include meter icon in SVG', () => {
       const meter = new Meter('battery', 0, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS');
-      const svg = meter.createSVG();
+      const element = meter.createElement();
+      const svg = element.outerHTML;
 
       expect(svg).toContain('icon="mdi:battery"');
     });
 
     test('should include formatted value in SVG', () => {
       const meter = new Meter('test', 1234, 0, 5000, false, 'Test', 'mdi:test', 'WATTS');
-      const svg = meter.createSVG();
+      const element = meter.createElement();
+      const svg = element.outerHTML;
 
       expect(svg).toContain('>1234</text>');
     });
 
     test('should generate tick marks for unidirectional meter', () => {
       const meter = new Meter('test', 500, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
-      const svg = meter.createSVG();
+      const element = meter.createElement();
+      const svg = element.outerHTML;
 
       // Unidirectional should have 3 ticks: 0, max/2, max
       const tickCount = (svg.match(/<line x1="\d+/g) || []).length;
@@ -269,7 +274,8 @@ describe('Meter', () => {
 
     test('should generate tick marks for bidirectional meter', () => {
       const meter = new Meter('battery', 0, -1000, 1000, true, 'Battery', 'mdi:battery', 'WATTS');
-      const svg = meter.createSVG();
+      const element = meter.createElement();
+      const svg = element.outerHTML;
 
       // Bidirectional should have 3 ticks: min, 0, max
       const tickCount = (svg.match(/<line x1="\d+/g) || []).length;
@@ -279,7 +285,7 @@ describe('Meter', () => {
     test('should initialize needle state to current angle when creating SVG', () => {
       const meter = new Meter('test', 500, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
       
-      meter.createSVG();
+      meter.createElement();
 
       expect(meter.needleState.current).toBe(meter.needleState.target);
       expect(meter.needleState.ghost).toBe(meter.needleState.target);
@@ -337,32 +343,26 @@ describe('Meter', () => {
 
   describe('Dimming Behavior', () => {
     test('should not dim when value is above threshold', () => {
-      const mockParent = document.createElement('div');
-      const dimmer = document.createElement('div');
-      dimmer.id = 'dimmer-test';
-      dimmer.setAttribute = vi.fn();
-      mockParent.appendChild(dimmer);
-
-      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, false, mockParent);
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
+      const element = meter.createElement();
+      const dimmer = element.querySelector('#dimmer-test');
+      
       meter.updateDimming();
 
-      expect(dimmer.setAttribute).toHaveBeenCalledWith('opacity', '0');
+      expect(dimmer?.getAttribute('opacity')).toBe('0');
     });
 
     test('should dim when value is near zero', () => {
-      const mockParent = document.createElement('div');
-      const dimmer = document.createElement('div');
-      dimmer.id = 'dimmer-test';
-      dimmer.setAttribute = vi.fn();
-      mockParent.appendChild(dimmer);
-
-      const meter = new Meter('test', 0.1, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, false, mockParent);
+      const meter = new Meter('test', 0.1, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
+      const element = meter.createElement();
+      const dimmer = element.querySelector('#dimmer-test');
+      
       meter.updateDimming();
 
-      expect(dimmer.setAttribute).toHaveBeenCalledWith('opacity', '0.3');
+      expect(dimmer?.getAttribute('opacity')).toBe('0.3');
     });
 
-    test('should handle missing parent element gracefully', () => {
+    test('should handle missing element gracefully', () => {
       const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
 
       expect(() => meter.updateDimming()).not.toThrow();

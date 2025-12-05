@@ -1,4 +1,4 @@
-import type { NeedleState } from './types.js';
+import type { NeedleState, ActionConfig } from './types.js';
 
 /**
  * Meter class: Fully self-contained gauge meter with rendering and animation
@@ -14,7 +14,14 @@ export class Meter {
   units: string;
   private _invertView: boolean;
   showPlus: boolean;
-  parentElement: Element | null;
+  
+  // Tap action configuration
+  private tapAction: ActionConfig | undefined;
+  private entityId: string | undefined;
+  private fireEventCallback: ((event: string, detail?: any) => void) | undefined;
+  
+  // DOM element this meter owns
+  element: SVGGElement | null;
 
   // Meter geometry constants
   radius: number;
@@ -42,7 +49,9 @@ export class Meter {
     units: string,
     invertView = false,
     showPlus = false,
-    parentElement: Element | null = null
+    tapAction?: ActionConfig,
+    entityId?: string,
+    fireEventCallback?: (event: string, detail?: any) => void
   ) {
     this.id = id;
     this._value = value;
@@ -54,7 +63,10 @@ export class Meter {
     this.units = units;
     this._invertView = invertView;
     this.showPlus = showPlus;
-    this.parentElement = parentElement;
+    this.tapAction = tapAction;
+    this.entityId = entityId;
+    this.fireEventCallback = fireEventCallback;
+    this.element = null;
 
     // Meter geometry constants
     this.radius = 50;
@@ -86,8 +98,8 @@ export class Meter {
     this._updateNeedleAngle();
 
     // Update value text immediately
-    if (this.parentElement) {
-      const valueText = this.parentElement.querySelector(`#value-${this.id}`);
+    if (this.element) {
+      const valueText = this.element.querySelector(`#value-${this.id}`);
       if (valueText) {
         valueText.textContent = this._formatValueText();
       }
@@ -108,8 +120,8 @@ export class Meter {
     this._updateNeedleAngle();
 
     // Update value text immediately (displayValue depends on invertView)
-    if (this.parentElement) {
-      const valueText = this.parentElement.querySelector(`#value-${this.id}`);
+    if (this.element) {
+      const valueText = this.element.querySelector(`#value-${this.id}`);
       if (valueText) {
         valueText.textContent = this._formatValueText();
       }
@@ -151,9 +163,9 @@ export class Meter {
   }
 
   updateDimming(): void {
-    if (!this.parentElement) return;
+    if (!this.element) return;
 
-    const dimmer = this.parentElement.querySelector(`#dimmer-${this.id}`);
+    const dimmer = this.element.querySelector(`#dimmer-${this.id}`);
     if (dimmer) {
       const isZero = Math.abs(this.value) < 0.5;
       dimmer.setAttribute('opacity', isZero ? '0.3' : '0');
@@ -171,7 +183,7 @@ export class Meter {
       const deltaTime = timestamp - this._lastAnimationTime;
       this._lastAnimationTime = timestamp;
 
-      if (!this.parentElement) {
+      if (!this.element) {
         this._animationFrameId = null;
         return;
       }
@@ -195,7 +207,7 @@ export class Meter {
       }
 
       // Update main needle
-      const needle = this.parentElement.querySelector(`#needle-${this.id}`);
+      const needle = this.element.querySelector(`#needle-${this.id}`);
       if (needle) {
         const needleRad = (this.needleState.current * Math.PI) / 180;
         const needleX = this.centerX + needleLength * Math.cos(needleRad);
@@ -205,7 +217,7 @@ export class Meter {
       }
 
       // Update ghost needle
-      const ghostNeedle = this.parentElement.querySelector(`#ghost-needle-${this.id}`);
+      const ghostNeedle = this.element.querySelector(`#ghost-needle-${this.id}`);
       if (ghostNeedle) {
         const ghostRad = (this.needleState.ghost * Math.PI) / 180;
         const ghostX = this.centerX + needleLength * Math.cos(ghostRad);
@@ -228,7 +240,82 @@ export class Meter {
     }
   }
 
-  createSVG(): string {
+  /**
+   * Handle tap action when meter is clicked
+   */
+  private _handleTapAction(): void {
+    if (!this.fireEventCallback) return;
+
+    // Default to more-info if no tap action configured
+    const config = this.tapAction || { action: 'more-info' };
+    const action = config.action || 'more-info';
+
+    switch (action) {
+      case 'more-info':
+        const entityId = config.entity || this.entityId;
+        if (entityId) {
+          this.fireEventCallback('hass-more-info', { entityId });
+        }
+        break;
+
+      case 'navigate':
+        if (config.navigation_path) {
+          history.pushState(null, '', config.navigation_path);
+          this.fireEventCallback('location-changed', { replace: config.navigation_replace || false });
+        }
+        break;
+
+      case 'url':
+        if (config.url_path) {
+          window.open(config.url_path);
+        }
+        break;
+
+      case 'toggle':
+        if (this.entityId) {
+          this.fireEventCallback('call-service', {
+            domain: 'homeassistant',
+            service: 'toggle',
+            service_data: { entity_id: this.entityId }
+          });
+        }
+        break;
+
+      case 'perform-action':
+        if (config.perform_action) {
+          const [domain, service] = config.perform_action.split('.');
+          this.fireEventCallback('call-service', {
+            domain,
+            service,
+            service_data: config.data || {},
+            target: config.target
+          });
+        }
+        break;
+
+      case 'assist':
+        this.fireEventCallback('show-dialog', {
+          dialogTag: 'ha-voice-command-dialog',
+          dialogParams: {
+            pipeline_id: config.pipeline_id || 'last_used',
+            start_listening: config.start_listening
+          }
+        });
+        break;
+
+      case 'none':
+        // Do nothing
+        break;
+    }
+  }
+
+  /**
+   * Create and return the SVG element for this meter
+   */
+  /**
+   * Create and return the SVG element for this meter
+   */
+  createElement(): SVGGElement {
     const displayValue = this.displayValue;
 
     // Calculate percentage and angle for needle
@@ -289,7 +376,7 @@ export class Meter {
     const valueY = this.centerY + this.radius * 0.5;
     const unitsY = this.centerY + this.radius * 0.7;
 
-    return `
+    const svgMarkup = `
       <g transform="translate(${this.offsetX}, ${this.offsetY})">
         <defs>
           <clipPath id="clip-${this.id}-local">
@@ -335,5 +422,33 @@ export class Meter {
         <rect id="dimmer-${this.id}" x="0" y="0" width="${this.boxWidth}" height="${this.boxHeight}" rx="${this.boxRadius}" ry="${this.boxRadius}" fill="black" opacity="0" pointer-events="none" style="transition: opacity 0.8s ease-in-out;" />
       </g>
     `;
+
+    // Create element from markup using a temporary container
+    const container = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    container.innerHTML = svgMarkup;
+    const element = container.firstElementChild as SVGGElement;
+
+    // Store reference to owned element
+    this.element = element;
+
+    // Attach click handler (defaults to more-info if no action configured)
+    // Only skip if explicitly set to 'none'
+    if (!this.tapAction || this.tapAction.action !== 'none') {
+      element.style.cursor = 'pointer';
+      element.addEventListener('click', (e) => {
+        this._handleTapAction();
+        e.stopPropagation();
+      });
+      
+      // Add hover effect
+      element.addEventListener('mouseenter', () => {
+        element.style.filter = 'brightness(1.1)';
+      });
+      element.addEventListener('mouseleave', () => {
+        element.style.filter = '';
+      });
+    }
+
+    return element;
   }
 }

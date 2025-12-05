@@ -194,25 +194,48 @@ class EnergyFlowCard extends HTMLElement {
     if (!this.querySelector('.energy-flow-svg')) {
       this._iconsExtracted = false; // Reset flag on full render
       
-      // Create meter instances
+      // Create fireEvent callback for meters (bound to this context)
+      const fireEvent = (event: string, detail?: any) => {
+        this._fireEvent.call(this, event, detail);
+      };
+      
+      // Create meter instances with tap actions
       const productionMeter = new Meter('production', production, 0, productionMax, false, 
         this._getDisplayName('production_name', 'production_entity', 'Production'),
         this._getIcon('production_icon', 'production_entity', 'mdi:solar-power'),
-        'WATTS');
+        'WATTS',
+        false,
+        false,
+        this._config.production_tap_action,
+        this._config.production_entity,
+        fireEvent);
       const batteryMeter = new Meter('battery', battery, batteryMin, batteryMax, true,
         this._getDisplayName('battery_name', 'battery_entity', 'Battery'),
         this._getIcon('battery_icon', 'battery_entity', 'mdi:battery'),
         'WATTS',
         this._config.invert_battery_view,
-        this._config.show_plus);
+        this._config.show_plus,
+        this._config.battery_tap_action,
+        this._config.battery_entity,
+        fireEvent);
       const gridMeter = new Meter('grid', grid, gridMin, gridMax, true,
         this._getDisplayName('grid_name', 'grid_entity', 'Grid'),
         this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower'),
-        'WATTS');
+        'WATTS',
+        false,
+        false,
+        this._config.grid_tap_action,
+        this._config.grid_entity,
+        fireEvent);
       const loadMeter = new Meter('load', load, 0, loadMax, false,
         this._getDisplayName('load_name', 'load_entity', 'Load'),
         this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt'),
-        'WATTS');
+        'WATTS',
+        false,
+        false,
+        this._config.load_tap_action,
+        this._config.load_entity,
+        fireEvent);
       
       this.innerHTML = `
         <ha-card>
@@ -279,48 +302,37 @@ class EnergyFlowCard extends HTMLElement {
             <g id="flow-layer"></g>
             
             <!-- Production Meter (top left) -->
-            <g id="production-meter" class="meter-group" transform="translate(${this._meterPositions.production.x}, ${this._meterPositions.production.y})">
-              ${productionMeter.createSVG()}
-            </g>
+            <g id="production-meter" class="meter-group" transform="translate(${this._meterPositions.production.x}, ${this._meterPositions.production.y})"></g>
             
             <!-- Battery Meter (middle left, offset right) -->
-            <g id="battery-meter" class="meter-group" transform="translate(${this._meterPositions.battery.x}, ${this._meterPositions.battery.y})">
-              ${batteryMeter.createSVG()}
-            </g>
+            <g id="battery-meter" class="meter-group" transform="translate(${this._meterPositions.battery.x}, ${this._meterPositions.battery.y})"></g>
             
             <!-- Grid Meter (bottom left) -->
-            <g id="grid-meter" class="meter-group" transform="translate(${this._meterPositions.grid.x}, ${this._meterPositions.grid.y})">
-              ${gridMeter.createSVG()}
-            </g>
+            <g id="grid-meter" class="meter-group" transform="translate(${this._meterPositions.grid.x}, ${this._meterPositions.grid.y})"></g>
             
             <!-- Load Meter (right, 2x size) -->
-            <g id="load-meter" class="meter-group" transform="translate(${this._meterPositions.load.x}, ${this._meterPositions.load.y}) scale(2)">
-              ${loadMeter.createSVG()}
-            </g>
+            <g id="load-meter" class="meter-group" transform="translate(${this._meterPositions.load.x}, ${this._meterPositions.load.y}) scale(2)"></g>
           </svg>
           </div>
         </ha-card>
       `;
       
-      // Store meter instances with reference to their parent elements
+      // Append meter elements and start animations
       requestAnimationFrame(() => {
-        productionMeter.parentElement = this.querySelector('#production-meter');
-        batteryMeter.parentElement = this.querySelector('#battery-meter');
-        gridMeter.parentElement = this.querySelector('#grid-meter');
-        loadMeter.parentElement = this.querySelector('#load-meter');
+        const productionContainer = this.querySelector('#production-meter');
+        const batteryContainer = this.querySelector('#battery-meter');
+        const gridContainer = this.querySelector('#grid-meter');
+        const loadContainer = this.querySelector('#load-meter');
+        
+        if (productionContainer) productionContainer.appendChild(productionMeter.createElement());
+        if (batteryContainer) batteryContainer.appendChild(batteryMeter.createElement());
+        if (gridContainer) gridContainer.appendChild(gridMeter.createElement());
+        if (loadContainer) loadContainer.appendChild(loadMeter.createElement());
         
         this._meters.set('production', productionMeter);
         this._meters.set('battery', batteryMeter);
         this._meters.set('grid', gridMeter);
         this._meters.set('load', loadMeter);
-        
-        // Add click handlers for tap actions
-        if (this._config) {
-          this._attachMeterClickHandler('#production-meter', this._config.production_tap_action, this._config.production_entity);
-          this._attachMeterClickHandler('#battery-meter', this._config.battery_tap_action, this._config.battery_entity);
-          this._attachMeterClickHandler('#grid-meter', this._config.grid_tap_action, this._config.grid_entity);
-          this._attachMeterClickHandler('#load-meter', this._config.load_tap_action, this._config.load_entity);
-        }
         
         // Start each meter's animation
         productionMeter.startAnimation();
@@ -460,29 +472,18 @@ class EnergyFlowCard extends HTMLElement {
   }
 
   private _fireEvent(type: string, detail: any = {}): void {
+    // Handle call-service events specially
+    if (type === 'call-service' && this._hass) {
+      this._hass.callService(detail.domain, detail.service, detail.service_data || {}, detail.target);
+      return;
+    }
+    
     const event = new CustomEvent(type, {
       detail,
       bubbles: true,
       composed: true
     });
     this.dispatchEvent(event);
-  }
-
-  private _attachMeterClickHandler(selector: string, actionConfig: any | undefined, entityId: string): void {
-    const element = this.querySelector(selector);
-    if (!element) return;
-    
-    // Add cursor pointer style
-    (element as HTMLElement).style.cursor = 'pointer';
-    
-    // Remove any existing click listener
-    const newElement = element.cloneNode(true);
-    element.parentNode?.replaceChild(newElement, element);
-    
-    // Add click listener
-    newElement.addEventListener('click', () => {
-      this._handleAction(actionConfig, entityId);
-    });
   }
 
   _createMeterDefs() {
