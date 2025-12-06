@@ -391,9 +391,9 @@
       <line x1="${c.left}" y1="${u}" x2="${c.left+d}" y2="${u}" stroke="rgb(160, 160, 160)" stroke-width="1" stroke-dasharray="4,4" />
       ${x}
       ${M}
-      ${k}
       ${this._createTimeLabels(d,g,c,12)}
       ${this._createYAxisLabels(l,f,c,e,n,u)}
+      ${k}
     `;t.innerHTML=$,this._updateChartIndicators();const y=this.querySelector(".loading-message");y&&y.remove()}_updateChartIndicators(){const t=this.querySelector(".chart-svg");if(!t||!this._chartDataCache||!this._liveChartValues)return;const i=this._chartDataCache.dataPoints,e=Math.max(...i.map(u=>u.solar+u.batteryDischarge+u.gridImport),...i.map(u=>u.load)),n=Math.max(...i.map(u=>u.batteryCharge+u.gridExport)),o=e+n,s=o>0?e/o:.5,r=o>0?n/o:.5,h=800,a=400,c={top:20,right:150,bottom:40,left:60},d=a-c.top-c.bottom,g=d*s,l=d*r,f=e>0?g/(e*1.1):1,b=n>0?l/(n*1.1):1,m=c.top+g;this._renderChartIndicators(t,i,h-c.left-c.right,g,l,f,b,c,{},m)}async _fetchHistory(t,i,e){if(!this._hass)return[];const n=`history/period/${i.toISOString()}?filter_entity_id=${t}&end_time=${e.toISOString()}&minimal_response&no_attributes`;try{return(await this._hass.callApi("GET",n))[0]||[]}catch(o){return console.error(`Error fetching history for ${t}:`,o),[]}}_drawStackedAreaChart(t,i,e,n,o){const s=this.querySelector(".chart-svg");if(!s)return;const r=800,h=400,a={top:20,right:150,bottom:40,left:60},c=r-a.left-a.right,d=h-a.top-a.bottom,l=o*120,b=o*12,m=10,u=new Date,M=Math.floor(u.getMinutes()/5)*5,x=new Date(u.getFullYear(),u.getMonth(),u.getDate(),u.getHours(),M,0,0),k=new Date(x.getTime()-o*60*60*1e3),$=[];for(let w=0;w<l;w++){const E=new Date(k.getTime()+w*30*1e3),V=this._interpolateValue(t,E),R=this._interpolateValue(i,E),F=this._interpolateValue(e,E);let O=this._interpolateValue(n,E);this._config?.invert_battery_data&&(O=-O),$.push({time:E,solar:Math.max(0,V),batteryDischarge:Math.max(0,O),batteryCharge:Math.max(0,-O),gridImport:Math.max(0,R),gridExport:Math.max(0,-R),load:Math.max(0,F)})}const y=[];for(let w=0;w<b;w++){const E=new Date(k.getTime()+(w+1)*5*60*1e3),V=w*m,R=Math.min(V+m,$.length),F=R-V;let O=0,Z=0,X=0,j=0,N=0,z=0;for(let Y=V;Y<R;Y++)O+=$[Y].solar,Z+=$[Y].batteryDischarge,X+=$[Y].batteryCharge,j+=$[Y].gridImport,N+=$[Y].gridExport,z+=$[Y].load;w===0&&console.log("Chart data sample (5-min avg of 30-sec data):",{time:E.toISOString(),windowSize:F,solar:O/F,invert_battery_data:this._config?.invert_battery_data}),y.push({time:E,solar:O/F,batteryDischarge:Z/F,batteryCharge:X/F,gridImport:j/F,gridExport:N/F,load:z/F})}$.length=0,this._chartDataCache={timestamp:Date.now(),dataPoints:y};const p=Math.max(...y.map(w=>w.solar+w.batteryDischarge+w.gridImport),...y.map(w=>w.load)),_=Math.max(...y.map(w=>w.batteryCharge+w.gridExport)),L=p+_,A=L>0?p/L:.5,C=L>0?_/L:.5,I=p>0?d*A/(p*1.1):1,P=_>0?d*C/(_*1.1):1,v=Math.min(I,P),T=p*v*1.1,W=_*v*1.1,S=a.top+T,q=this._createStackedPaths(y,c,T,v,a,"supply",S),H=this._createStackedPaths(y,c,W,v,a,"demand",S),B=this._createLoadLine(y,c,T,v,a,S);let D=`
       <!-- Grid lines -->
       <g opacity="0.1">
@@ -417,9 +417,6 @@
       <!-- Supply areas (above zero line) -->
       ${q}
       
-      <!-- Load line (thick gray line on supply side) -->
-      ${B}
-      
       <!-- Time axis labels -->
       ${this._createTimeLabels(c,d,a,o)}
       
@@ -428,6 +425,9 @@
       
       <!-- Floating indicators with current values -->
       ${this._createFloatingIndicators(y,c,d,v,v,a,r)}
+      
+      <!-- Load line (thick gray line on supply side - rendered last so it's on top) -->
+      ${B}
       
       <!-- Hidden icon sources for extraction -->
       ${this._createChartIconSources()}

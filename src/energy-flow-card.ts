@@ -1671,9 +1671,9 @@ class EnergyFlowCard extends HTMLElement {
       <line x1="${margin.left}" y1="${zeroLineY}" x2="${margin.left + chartWidth}" y2="${zeroLineY}" stroke="rgb(160, 160, 160)" stroke-width="1" stroke-dasharray="4,4" />
       ${demandPaths}
       ${supplyPaths}
-      ${loadLine}
       ${this._createTimeLabels(chartWidth, chartHeight, margin, 12)}
       ${this._createYAxisLabels(supplyHeight, demandHeight, margin, maxSupply, maxDemand, zeroLineY)}
+      ${loadLine}
     `;
 
     svg.innerHTML = chartContent;
@@ -1911,9 +1911,6 @@ class EnergyFlowCard extends HTMLElement {
       <!-- Supply areas (above zero line) -->
       ${supplyPaths}
       
-      <!-- Load line (thick gray line on supply side) -->
-      ${loadLine}
-      
       <!-- Time axis labels -->
       ${this._createTimeLabels(chartWidth, chartHeight, margin, hoursToShow)}
       
@@ -1922,6 +1919,9 @@ class EnergyFlowCard extends HTMLElement {
       
       <!-- Floating indicators with current values -->
       ${this._createFloatingIndicators(dataPoints, chartWidth, chartHeight, scale, scale, margin, width)}
+      
+      <!-- Load line (thick gray line on supply side - rendered last so it's on top) -->
+      ${loadLine}
       
       <!-- Hidden icon sources for extraction -->
       ${this._createChartIconSources()}
