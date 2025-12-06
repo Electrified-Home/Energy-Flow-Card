@@ -27,6 +27,19 @@ class EnergyFlowCard extends HTMLElement {
   private _lastValues?: { grid: number; production: number; load: number; battery: number };
   private _lastViewMode?: string;
   private _iconExtractionTimeouts: Set<number>;
+  private _chartDataCache?: {
+    timestamp: number;
+    dataPoints: Array<{
+      time: Date;
+      solar: number;
+      batteryDischarge: number;
+      batteryCharge: number;
+      gridImport: number;
+      gridExport: number;
+      load: number;
+    }>;
+  };
+  private _chartRenderPending: boolean;
 
   constructor() {
     super();
@@ -37,6 +50,8 @@ class EnergyFlowCard extends HTMLElement {
     this._iconCache = new Map();
     this._iconsExtracted = false;
     this._iconExtractionTimeouts = new Set();
+    this._chartDataCache = undefined;
+    this._chartRenderPending = false;
     
     // Meter instances
     this._meters = new Map();
@@ -147,6 +162,16 @@ class EnergyFlowCard extends HTMLElement {
       cancelAnimationFrame(this._animationFrameId);
       this._animationFrameId = null;
     }
+    
+    // Clear icon extraction timeouts
+    this._iconExtractionTimeouts.forEach(timeout => clearTimeout(timeout));
+    this._iconExtractionTimeouts.clear();
+    
+    // Clear chart data cache to prevent memory leaks
+    this._chartDataCache = undefined;
+    
+    // Clear icon cache
+    this._iconCache.clear();
   }
 
   setConfig(config: EnergyFlowCardConfig): void {
@@ -180,12 +205,27 @@ class EnergyFlowCard extends HTMLElement {
 
     // Check view mode
     const viewMode = this._config.view_mode || 'default';
+    
+    // Clean up chart cache if switching away from chart view
+    if (this._lastViewMode === 'chart' && viewMode !== 'chart') {
+      this._chartDataCache = undefined;
+    }
+    
     if (viewMode === 'compact' || viewMode === 'compact-battery') {
       this._renderCompactView(grid, load, production, battery, viewMode);
       return;
     }
     if (viewMode === 'chart') {
-      this._renderChartView(grid, load, production, battery);
+      // Only update live values, don't re-render entire chart on every state change
+      this._liveChartValues = { grid, load, production, battery };
+      
+      // Only render chart if view mode changed or chart doesn't exist
+      if (this._lastViewMode !== 'chart' || !this.querySelector('.chart-view')) {
+        this._renderChartView(grid, load, production, battery);
+      } else {
+        // Just update the live indicators without re-fetching/re-rendering
+        this._updateChartIndicators();
+      }
       return;
     }
 
@@ -1539,8 +1579,25 @@ class EnergyFlowCard extends HTMLElement {
 
   private async _fetchAndRenderChartData(): Promise<void> {
     if (!this._hass || !this._config) return;
+    if (this._chartRenderPending) return; // Prevent concurrent fetches
 
     const hoursToShow = 12;
+    const now = Date.now();
+    const cacheAge = this._chartDataCache ? now - this._chartDataCache.timestamp : Infinity;
+    const cacheMaxAge = 5 * 60 * 1000; // 5 minutes
+
+    // Clear expired cache to prevent memory leaks
+    if (this._chartDataCache && cacheAge >= cacheMaxAge) {
+      this._chartDataCache = undefined;
+    }
+
+    // Use cached data if available and fresh
+    if (this._chartDataCache && cacheAge < cacheMaxAge) {
+      this._renderChartFromCache();
+      return;
+    }
+
+    this._chartRenderPending = true;
     const end = new Date();
     const start = new Date(end.getTime() - hoursToShow * 60 * 60 * 1000);
 
@@ -1555,12 +1612,14 @@ class EnergyFlowCard extends HTMLElement {
 
       // Process and render the chart
       this._drawStackedAreaChart(productionHistory, gridHistory, loadHistory, batteryHistory, hoursToShow);
+      this._chartRenderPending = false;
 
       // Remove loading message
       const loadingMsg = this.querySelector('.loading-message');
       if (loadingMsg) loadingMsg.remove();
     } catch (error) {
       console.error('Error fetching chart data:', error);
+      this._chartRenderPending = false;
       const svg = this.querySelector('.chart-svg');
       if (svg) {
         svg.innerHTML = `
@@ -1570,6 +1629,87 @@ class EnergyFlowCard extends HTMLElement {
         `;
       }
     }
+  }
+
+  private _renderChartFromCache(): void {
+    if (!this._chartDataCache) return;
+    
+    const svg = this.querySelector('.chart-svg');
+    if (!svg) return;
+
+    const dataPoints = this._chartDataCache.dataPoints;
+    
+    // Recalculate scaling (lightweight)
+    const maxSupply = Math.max(...dataPoints.map(d => d.solar + d.batteryDischarge + d.gridImport), ...dataPoints.map(d => d.load));
+    const maxDemand = Math.max(...dataPoints.map(d => d.batteryCharge + d.gridExport));
+    const totalRange = maxSupply + maxDemand;
+    const supplyRatio = totalRange > 0 ? maxSupply / totalRange : 0.5;
+    const demandRatio = totalRange > 0 ? maxDemand / totalRange : 0.5;
+
+    const width = 800;
+    const height = 400;
+    const margin = { top: 20, right: 150, bottom: 40, left: 60 };
+    const chartWidth = width - margin.left - margin.right;
+    const chartHeight = height - margin.top - margin.bottom;
+
+    const supplyHeight = chartHeight * supplyRatio;
+    const demandHeight = chartHeight * demandRatio;
+    
+    const supplyScale = maxSupply > 0 ? supplyHeight / (maxSupply * 1.1) : 1;
+    const demandScale = maxDemand > 0 ? demandHeight / (maxDemand * 1.1) : 1;
+    const zeroLineY = margin.top + supplyHeight;
+
+    // Render chart paths
+    const supplyPaths = this._createStackedPaths(dataPoints, chartWidth, supplyHeight, supplyScale, margin, 'supply', zeroLineY);
+    const demandPaths = this._createStackedPaths(dataPoints, chartWidth, demandHeight, demandScale, margin, 'demand', zeroLineY);
+    const loadLine = this._createLoadLine(dataPoints, chartWidth, supplyHeight, supplyScale, margin, zeroLineY);
+
+    let chartContent = `
+      <g opacity="0.1">
+        ${this._createGridLines(chartWidth, chartHeight, margin, Math.max(maxSupply, maxDemand))}
+      </g>
+      <line x1="${margin.left}" y1="${zeroLineY}" x2="${margin.left + chartWidth}" y2="${zeroLineY}" stroke="rgb(160, 160, 160)" stroke-width="1" stroke-dasharray="4,4" />
+      ${demandPaths}
+      ${supplyPaths}
+      ${loadLine}
+      ${this._createTimeLabels(chartWidth, chartHeight, margin, 12)}
+      ${this._createYAxisLabels(supplyHeight, demandHeight, margin, maxSupply, maxDemand, zeroLineY)}
+    `;
+
+    svg.innerHTML = chartContent;
+    
+    // Update indicators with live values
+    this._updateChartIndicators();
+
+    const loadingMsg = this.querySelector('.loading-message');
+    if (loadingMsg) loadingMsg.remove();
+  }
+
+  private _updateChartIndicators(): void {
+    const svg = this.querySelector('.chart-svg');
+    if (!svg || !this._chartDataCache || !this._liveChartValues) return;
+
+    const dataPoints = this._chartDataCache.dataPoints;
+    const maxSupply = Math.max(...dataPoints.map(d => d.solar + d.batteryDischarge + d.gridImport), ...dataPoints.map(d => d.load));
+    const maxDemand = Math.max(...dataPoints.map(d => d.batteryCharge + d.gridExport));
+    const totalRange = maxSupply + maxDemand;
+    const supplyRatio = totalRange > 0 ? maxSupply / totalRange : 0.5;
+    const demandRatio = totalRange > 0 ? maxDemand / totalRange : 0.5;
+
+    const width = 800;
+    const height = 400;
+    const margin = { top: 20, right: 150, bottom: 40, left: 60 };
+    const chartHeight = height - margin.top - margin.bottom;
+
+    const supplyHeight = chartHeight * supplyRatio;
+    const demandHeight = chartHeight * demandRatio;
+    
+    const supplyScale = maxSupply > 0 ? supplyHeight / (maxSupply * 1.1) : 1;
+    const demandScale = maxDemand > 0 ? demandHeight / (maxDemand * 1.1) : 1;
+    const zeroLineY = margin.top + supplyHeight;
+
+    // Just re-render indicators with current live values
+    this._renderChartIndicators(svg, dataPoints, width - margin.left - margin.right, supplyHeight, demandHeight, supplyScale, demandScale, margin, {}, zeroLineY);
   }
 
   private async _fetchHistory(entityId: string, start: Date, end: Date): Promise<Array<{ state: string; last_changed: string }>> {
@@ -1701,6 +1841,15 @@ class EnergyFlowCard extends HTMLElement {
         load: loadSum / windowSize,
       });
     }
+
+    // Clear raw data points to allow garbage collection
+    rawDataPoints.length = 0;
+
+    // Cache the processed data points (replacing any old cache completely)
+    this._chartDataCache = {
+      timestamp: Date.now(),
+      dataPoints
+    };
 
     // Find max values for scaling - use single consistent scale
     const maxSupply = Math.max(...dataPoints.map(d => d.solar + d.batteryDischarge + d.gridImport), ...dataPoints.map(d => d.load));
