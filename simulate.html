@@ -213,6 +213,8 @@
         <button class="preset-btn" onclick="setScenario('underflow')">⚠️ Load Underflow</button>
         <button class="preset-btn" onclick="setScenario('tiny-battery')">🔋 Tiny Battery (5W)</button>
         <button class="preset-btn" onclick="setScenario('imbalanced')">⚖️ Sensor Imbalance</button>
+        <button class="preset-btn" onclick="setScenario('discrepancy')">📊 560W Battery → 590W Load</button>
+        <button class="preset-btn" onclick="setScenario('battery-only-load')">🔋 Battery 100% → Load</button>
         <button class="preset-btn" onclick="setScenario('grid-zero-surplus')">🔌 Grid=0 + Surplus</button>
         <button class="preset-btn" onclick="setScenario('grid-zero-deficit')">🔌 Grid=0 + Deficit</button>
         <button class="preset-btn" onclick="setScenario('all-zero')">🚫 All Zero</button>
@@ -404,6 +406,8 @@
         'underflow': { grid: 0, load: 3000, production: 500, battery: 0 },
         'tiny-battery': { grid: 2000, load: 3000, production: 1000, battery: 5 },
         'imbalanced': { grid: -50, load: 1800, production: 2200, battery: -300 },
+        'discrepancy': { grid: 0, load: 590, production: 0, battery: 560 },  // Battery 560W but load 590W
+        'battery-only-load': { grid: 0, load: 1500, production: 0, battery: 1500 }, // 100% battery to load
         'grid-zero-surplus': { grid: 0, load: 800, production: 3000, battery: -500 },
         'grid-zero-deficit': { grid: 0, load: 4000, production: 1200, battery: 300 },
         'all-zero': { grid: 0, load: 0, production: 0, battery: 0 },

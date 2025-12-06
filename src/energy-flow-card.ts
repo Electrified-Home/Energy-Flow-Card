@@ -984,11 +984,26 @@ class EnergyFlowCard extends HTMLElement {
     const batteryToLoad = flows.batteryToLoad;
     const gridToLoad = flows.gridToLoad;
 
-    // Calculate percentages based on actual load
-    const total = load || 1; // Avoid division by zero
+    // Calculate TRUE percentages for labels (these show accurate data)
+    const total = load || 1;
     const productionPercent = (productionValue / total) * 100;
     const batteryPercent = (batteryToLoad / total) * 100;
     const gridPercent = (gridToLoad / total) * 100;
+    
+    // Calculate VISUAL percentages for bar widths (scaled to fill 100%)
+    // This ensures the bar always fills completely when there's any activity
+    const sumPercent = productionPercent + batteryPercent + gridPercent;
+    let visualProductionPercent = productionPercent;
+    let visualBatteryPercent = batteryPercent;
+    let visualGridPercent = gridPercent;
+    
+    if (sumPercent > 0) {
+      // Scale to fill the bar completely (visual only)
+      const scale = 100 / sumPercent;
+      visualProductionPercent = productionPercent * scale;
+      visualBatteryPercent = batteryPercent * scale;
+      visualGridPercent = gridPercent * scale;
+    }
 
     // Colors (darker hues - 50% brightness)
     const productionColor = '#256028'; // Dark green
@@ -1008,20 +1023,58 @@ class EnergyFlowCard extends HTMLElement {
     let batteryLoadPercent = 0;  // Blue when discharging to load
     let batteryProdPercent = 0;  // Green when charging from production
     
+    // Battery watt values (for labels - battery bar shows watts, not percentages)
+    let batteryGridWatts = 0;
+    let batteryLoadWatts = 0;
+    let batteryProdWatts = 0;
+    
+    // Visual percentages (scaled to fill bar)
+    let visualBatteryGridPercent = 0;
+    let visualBatteryLoadPercent = 0;
+    let visualBatteryProdPercent = 0;
+    
     if (viewMode === 'compact-battery') {
       if (battery < 0) {
         // Battery is CHARGING (negative value) - show sources
         const batteryCharging = Math.abs(battery);
         const batteryTotal = batteryCharging || 1;
-        batteryGridPercent = (flows.gridToBattery / batteryTotal) * 100;      // Red (grid to battery)
-        batteryProdPercent = (flows.productionToBattery / batteryTotal) * 100; // Green (production to battery)
+        
+        // Watt values for labels
+        batteryGridWatts = flows.gridToBattery;
+        batteryProdWatts = flows.productionToBattery;
+        
+        // True percentages (for scaling)
+        batteryGridPercent = (flows.gridToBattery / batteryTotal) * 100;
+        batteryProdPercent = (flows.productionToBattery / batteryTotal) * 100;
+        
+        // Visual percentages - scale to fill bar completely
+        const chargeSum = batteryGridPercent + batteryProdPercent;
+        if (chargeSum > 0) {
+          const scale = 100 / chargeSum;
+          visualBatteryGridPercent = batteryGridPercent * scale;
+          visualBatteryProdPercent = batteryProdPercent * scale;
+        }
+        
       } else if (battery > 0) {
         // Battery is DISCHARGING (positive value) - show destinations
         const batteryTotal = battery || 1;
-        batteryLoadPercent = (flows.batteryToLoad / batteryTotal) * 100;       // Blue (battery to load)
-        // Remaining battery discharge goes to grid (part of export)
         const batteryToGrid = battery - flows.batteryToLoad;
-        batteryGridPercent = (batteryToGrid / batteryTotal) * 100;             // Yellow (battery to grid)
+        
+        // Watt values for labels
+        batteryLoadWatts = flows.batteryToLoad;
+        batteryGridWatts = batteryToGrid;
+        
+        // True percentages (for scaling)
+        batteryLoadPercent = (flows.batteryToLoad / batteryTotal) * 100;
+        batteryGridPercent = (batteryToGrid / batteryTotal) * 100;
+        
+        // Visual percentages - scale to fill bar completely
+        const dischargeSum = batteryLoadPercent + batteryGridPercent;
+        if (dischargeSum > 0) {
+          const scale = 100 / dischargeSum;
+          visualBatteryLoadPercent = batteryLoadPercent * scale;
+          visualBatteryGridPercent = batteryGridPercent * scale;
+        }
       }
     }
 
@@ -1294,37 +1347,39 @@ class EnergyFlowCard extends HTMLElement {
       const loadValueText = this.querySelector('#load-value-text');
 
       if (productionSegment) {
-        (productionSegment as HTMLElement).style.width = `${productionPercent}%`;
+        // Use visual percentage for width (fills bar), true percentage for label (shows accuracy)
+        (productionSegment as HTMLElement).style.width = `${visualProductionPercent}%`;
         const label = productionSegment.querySelector('.bar-segment-label');
         if (label && productionValue > 0) {
           label.textContent = `${Math.round(productionPercent)}%`;
         }
-        // Calculate pixel width for visibility logic
-        const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
-        const pixelWidth = (productionPercent / 100) * (barContainer?.offsetWidth || 0);
-        this._updateSegmentVisibility(productionSegment, pixelWidth, productionValue > 0);
+        const barContainer = this.querySelector('.bar-container');
+        const widthPx = (visualProductionPercent / 100) * (barContainer?.clientWidth || 0);
+        this._updateSegmentVisibility(productionSegment as HTMLElement, widthPx, productionValue > 0);
       }
 
       if (batterySegment) {
-        (batterySegment as HTMLElement).style.width = `${batteryPercent}%`;
+        // Use visual percentage for width, true percentage for label
+        (batterySegment as HTMLElement).style.width = `${visualBatteryPercent}%`;
         const label = batterySegment.querySelector('.bar-segment-label');
         if (label && batteryToLoad > 0) {
           label.textContent = `${Math.round(batteryPercent)}%`;
         }
-        const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
-        const pixelWidth = (batteryPercent / 100) * (barContainer?.offsetWidth || 0);
-        this._updateSegmentVisibility(batterySegment, pixelWidth, batteryToLoad > 0);
+        const barContainer = this.querySelector('.bar-container');
+        const widthPx = (visualBatteryPercent / 100) * (barContainer?.clientWidth || 0);
+        this._updateSegmentVisibility(batterySegment as HTMLElement, widthPx, batteryToLoad > 0);
       }
 
       if (gridSegment) {
-        (gridSegment as HTMLElement).style.width = `${gridPercent}%`;
+        // Use visual percentage for width, true percentage for label
+        (gridSegment as HTMLElement).style.width = `${visualGridPercent}%`;
         const label = gridSegment.querySelector('.bar-segment-label');
         if (label && gridToLoad > 0) {
           label.textContent = `${Math.round(gridPercent)}%`;
         }
-        const barContainer = this.querySelector('.bar-container') as HTMLElement | null;
-        const pixelWidth = (gridPercent / 100) * (barContainer?.offsetWidth || 0);
-        this._updateSegmentVisibility(gridSegment, pixelWidth, gridToLoad > 0);
+        const barContainer = this.querySelector('.bar-container');
+        const widthPx = (visualGridPercent / 100) * (barContainer?.clientWidth || 0);
+        this._updateSegmentVisibility(gridSegment as HTMLElement, widthPx, gridToLoad > 0);
       }
 
       if (loadValueText) {
@@ -1343,25 +1398,12 @@ class EnergyFlowCard extends HTMLElement {
         const batteryBarContainers = this.querySelectorAll('.bar-container');
         const batteryBarContainer = batteryBarContainers[1] as HTMLElement | null; // Second bar container is battery
         
-        // Calculate percentages and values based on charging/discharging state
-        let gridPercent = 0;
-        let loadPercent = 0;
-        let prodPercent = 0;
-        let gridValue = 0;
-        let loadValue = 0;
-        let prodValue = 0;
+        // Determine grid color based on charging/discharging
         let gridIsImport = false; // Red = import, Yellow = export
         
         if (battery < 0) {
           // CHARGING: show sources (production and/or grid charging battery)
-          // Percentage goes on RIGHT, bar on LEFT
-          const batteryCharging = Math.abs(battery);
-          const batteryTotal = batteryCharging || 1;
-          gridPercent = (flows.gridToBattery / batteryTotal) * 100;
-          prodPercent = (flows.productionToBattery / batteryTotal) * 100;
-          gridValue = flows.gridToBattery;
-          prodValue = flows.productionToBattery;
-          gridIsImport = true; // Red color
+          gridIsImport = true; // Red color - importing from grid to charge
           
           if (batterySocLeft) batterySocLeft.style.display = 'none';
           if (batterySocRight) batterySocRight.style.display = 'flex';
@@ -1370,15 +1412,7 @@ class EnergyFlowCard extends HTMLElement {
           }
         } else if (battery > 0) {
           // DISCHARGING: show destinations (battery going to load and/or grid)
-          // Percentage goes on LEFT, bar on RIGHT
-          const batteryTotal = battery || 1;
-          // Only show battery-to-grid if grid is actually exporting (negative)
-          const batteryToGrid = grid < -10 ? battery - flows.batteryToLoad : 0;
-          gridPercent = (batteryToGrid / batteryTotal) * 100;
-          loadPercent = (flows.batteryToLoad / batteryTotal) * 100;
-          gridValue = batteryToGrid;
-          loadValue = flows.batteryToLoad;
-          gridIsImport = false; // Yellow color
+          gridIsImport = false; // Yellow color - exporting to grid
           
           if (batterySocLeft) batterySocLeft.style.display = 'flex';
           if (batterySocRight) batterySocRight.style.display = 'none';
@@ -1394,39 +1428,40 @@ class EnergyFlowCard extends HTMLElement {
           }
         }
         
-        // Update grid segment (red when charging from grid, yellow when discharging to grid)
+        // Update grid segment
+        // Use VISUAL percentage for width (fills bar), WATT values for label (shows accuracy)
         if (batteryGridSegment) {
           const gridColorToUse = gridIsImport ? '#7a211b' : '#7a6b1b'; // Red or Yellow
-          (batteryGridSegment as HTMLElement).style.width = `${gridPercent}%`;
+          (batteryGridSegment as HTMLElement).style.width = `${visualBatteryGridPercent}%`;
           (batteryGridSegment as HTMLElement).style.background = gridColorToUse;
           const label = batteryGridSegment.querySelector('.bar-segment-label');
-          if (label && gridValue > 0) {
-            label.textContent = `${Math.round(gridValue)}W`;
+          if (label && batteryGridWatts > 0) {
+            label.textContent = `${Math.round(batteryGridWatts)}W`;
           }
-          const pixelWidth = (gridPercent / 100) * (batteryBarContainer?.offsetWidth || 0);
-          this._updateSegmentVisibility(batteryGridSegment, pixelWidth, gridValue > 0);
+          const pixelWidth = (visualBatteryGridPercent / 100) * (batteryBarContainer?.offsetWidth || 0);
+          this._updateSegmentVisibility(batteryGridSegment, pixelWidth, batteryGridWatts > 0);
         }
         
         // Update load segment (blue, only when discharging to load)
         if (batteryLoadSegment) {
-          (batteryLoadSegment as HTMLElement).style.width = `${loadPercent}%`;
+          (batteryLoadSegment as HTMLElement).style.width = `${visualBatteryLoadPercent}%`;
           const label = batteryLoadSegment.querySelector('.bar-segment-label');
-          if (label && loadValue > 0) {
-            label.textContent = `${Math.round(loadValue)}W`;
+          if (label && batteryLoadWatts > 0) {
+            label.textContent = `${Math.round(batteryLoadWatts)}W`;
           }
-          const pixelWidth = (loadPercent / 100) * (batteryBarContainer?.offsetWidth || 0);
-          this._updateSegmentVisibility(batteryLoadSegment, pixelWidth, loadValue > 0);
+          const pixelWidth = (visualBatteryLoadPercent / 100) * (batteryBarContainer?.offsetWidth || 0);
+          this._updateSegmentVisibility(batteryLoadSegment, pixelWidth, batteryLoadWatts > 0);
         }
         
         // Update production segment (green, only when charging from production)
         if (batteryProdSegment) {
-          (batteryProdSegment as HTMLElement).style.width = `${prodPercent}%`;
+          (batteryProdSegment as HTMLElement).style.width = `${visualBatteryProdPercent}%`;
           const label = batteryProdSegment.querySelector('.bar-segment-label');
-          if (label && prodValue > 0) {
-            label.textContent = `${Math.round(prodValue)}W`;
+          if (label && batteryProdWatts > 0) {
+            label.textContent = `${Math.round(batteryProdWatts)}W`;
           }
-          const pixelWidth = (prodPercent / 100) * (batteryBarContainer?.offsetWidth || 0);
-          this._updateSegmentVisibility(batteryProdSegment, pixelWidth, prodValue > 0);
+          const pixelWidth = (visualBatteryProdPercent / 100) * (batteryBarContainer?.offsetWidth || 0);
+          this._updateSegmentVisibility(batteryProdSegment, pixelWidth, batteryProdWatts > 0);
         }
       }
     };
