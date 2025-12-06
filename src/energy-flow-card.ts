@@ -1673,13 +1673,13 @@ class EnergyFlowCard extends HTMLElement {
       ${supplyPaths}
       ${this._createTimeLabels(chartWidth, chartHeight, margin, 12)}
       ${this._createYAxisLabels(supplyHeight, demandHeight, margin, maxSupply, maxDemand, zeroLineY)}
-      ${loadLine}
     `;
 
     svg.innerHTML = chartContent;
     
-    // Update indicators with live values
+    // Update indicators with live values, then add load line on top
     this._updateChartIndicators();
+    this._addLoadLineOnTop(svg, loadLine);
 
     const loadingMsg = this.querySelector('.loading-message');
     if (loadingMsg) loadingMsg.remove();
@@ -1708,8 +1708,12 @@ class EnergyFlowCard extends HTMLElement {
     const demandScale = maxDemand > 0 ? demandHeight / (maxDemand * 1.1) : 1;
     const zeroLineY = margin.top + supplyHeight;
 
-    // Just re-render indicators with current live values
+    // Re-render indicators with current live values
     this._renderChartIndicators(svg, dataPoints, width - margin.left - margin.right, supplyHeight, demandHeight, supplyScale, demandScale, margin, {}, zeroLineY);
+    
+    // Add load line on top after indicators
+    const loadLine = this._createLoadLine(dataPoints, width - margin.left - margin.right, supplyHeight, supplyScale, margin, zeroLineY);
+    this._addLoadLineOnTop(svg, loadLine);
   }
 
   private async _fetchHistory(entityId: string, start: Date, end: Date): Promise<Array<{ state: string; last_changed: string }>> {
@@ -1920,18 +1924,17 @@ class EnergyFlowCard extends HTMLElement {
       <!-- Floating indicators with current values -->
       ${this._createFloatingIndicators(dataPoints, chartWidth, chartHeight, scale, scale, margin, width)}
       
-      <!-- Load line (thick gray line on supply side - rendered last so it's on top) -->
-      ${loadLine}
-      
       <!-- Hidden icon sources for extraction -->
       ${this._createChartIconSources()}
     `;
 
     svg.innerHTML = svgContent;
     
-    // Extract icon paths and render native SVG indicators
+    // Extract icon paths and render native SVG indicators, then add load line on top
     requestAnimationFrame(() => {
       this._extractChartIcons(dataPoints, chartWidth, supplyHeight, demandHeight, scale, scale, margin, zeroLineY);
+      // Add load line after indicators so it's on top
+      this._addLoadLineOnTop(svg, loadLine);
     });
   }
 
@@ -2165,15 +2168,21 @@ class EnergyFlowCard extends HTMLElement {
     iconPaths: { [key: string]: string | null },
     zeroLineY: number
   ): void {
-    // Remove old indicators group if it exists
-    const oldIndicators = svg.querySelector('#chart-indicators');
-    if (oldIndicators) {
-      oldIndicators.remove();
+    // Get or create indicators group
+    let indicatorsGroup = svg.querySelector('#chart-indicators') as SVGGElement | null;
+    const isFirstRender = !indicatorsGroup;
+    
+    if (!indicatorsGroup) {
+      indicatorsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      indicatorsGroup.setAttribute('id', 'chart-indicators');
+      svg.appendChild(indicatorsGroup);
     }
 
-    // Remove hidden icon sources
-    const iconSources = svg.querySelectorAll('[id^="chart-icon-source-"]');
-    iconSources.forEach(source => source.remove());
+    // Remove hidden icon sources only on first render
+    if (isFirstRender) {
+      const iconSources = svg.querySelectorAll('[id^="chart-icon-source-"]');
+      iconSources.forEach(source => source.remove());
+    }
 
     // Use live values for indicators if available, otherwise use last historical point
     let currentValues;
@@ -2205,72 +2214,95 @@ class EnergyFlowCard extends HTMLElement {
       return `${Math.round(value)} W`;
     };
 
-    // Create indicators group
-    const indicatorsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    indicatorsGroup.setAttribute('id', 'chart-indicators');
-
-    // Helper to add indicator
-    const addIndicator = (y: number, color: string, iconType: string, value: string, prefix = '') => {
-      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      group.setAttribute('transform', `translate(${rightX + 10}, ${y})`);
-
-      // Circle
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('r', '5');
-      circle.setAttribute('fill', color);
-      group.appendChild(circle);
-
-      // Icon
-      const iconPath = iconPaths[iconType];
-      if (iconPath) {
-        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        icon.setAttribute('transform', 'translate(10, -8) scale(0.67)');
-        
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', iconPath);
-        path.setAttribute('fill', color);
-        icon.appendChild(path);
-        
-        group.appendChild(icon);
+    // Helper to update or create indicator
+    const updateIndicator = (id: string, y: number, color: string, iconType: string, value: string, prefix = '', shouldShow = true) => {
+      let group = indicatorsGroup!.querySelector(`#${id}`) as SVGGElement | null;
+      
+      if (!shouldShow) {
+        if (group) group.remove();
+        return;
       }
+      
+      if (!group) {
+        // Create new indicator group
+        group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('id', id);
+        
+        // Icon
+        const iconPath = iconPaths[iconType];
+        if (iconPath) {
+          const icon = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          icon.setAttribute('class', 'indicator-icon');
+          icon.setAttribute('transform', 'translate(10, -8) scale(0.67)');
+          
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', iconPath);
+          path.setAttribute('fill', color);
+          icon.appendChild(path);
+          
+          group.appendChild(icon);
+        }
 
-      // Text
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', '28');
-      text.setAttribute('y', '4');
-      text.setAttribute('fill', color);
-      text.setAttribute('font-size', '12');
-      text.setAttribute('font-weight', '600');
-      text.textContent = `${prefix}${value}`;
-      group.appendChild(text);
-
-      indicatorsGroup.appendChild(group);
+        // Text
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('class', 'indicator-text');
+        text.setAttribute('x', '28');
+        text.setAttribute('y', '4');
+        text.setAttribute('fill', color);
+        text.setAttribute('font-size', '12');
+        text.setAttribute('font-weight', '600');
+        group.appendChild(text);
+        
+        indicatorsGroup!.appendChild(group);
+      }
+      
+      // Update position
+      group.setAttribute('transform', `translate(${rightX + 10}, ${y})`);
+      
+      // Update text value
+      const text = group.querySelector('.indicator-text');
+      if (text) {
+        text.textContent = `${prefix}${value}`;
+      }
     };
 
-    // Add all indicators using current live values
-    addIndicator(loadY, '#CCCCCC', 'load', formatValue(currentValues.load));
+    // Update all indicators (order matters for z-index)
+    updateIndicator('indicator-solar', solarY, '#388e3c', 'solar', formatValue(currentValues.solar), '', currentValues.solar > 0);
+    updateIndicator('indicator-battery-discharge', batteryDischargeY, '#1976d2', 'battery', formatValue(currentValues.batteryDischarge), '+', currentValues.batteryDischarge > 0);
+    updateIndicator('indicator-grid-import', gridImportY, '#c62828', 'grid', formatValue(currentValues.gridImport), '', currentValues.gridImport > 0);
+    updateIndicator('indicator-battery-charge', batteryChargeY, '#1976d2', 'battery', formatValue(currentValues.batteryCharge), '-', currentValues.batteryCharge > 0);
+    updateIndicator('indicator-grid-export', gridExportY, '#f9a825', 'grid', formatValue(currentValues.gridExport), '', currentValues.gridExport > 0);
     
-    if (currentValues.solar > 0) {
-      addIndicator(solarY, '#388e3c', 'solar', formatValue(currentValues.solar));
-    }
-    
-    if (currentValues.batteryDischarge > 0) {
-      addIndicator(batteryDischargeY, '#1976d2', 'battery', formatValue(currentValues.batteryDischarge), '+');
-    }
-    
-    if (currentValues.gridImport > 0) {
-      addIndicator(gridImportY, '#c62828', 'grid', formatValue(currentValues.gridImport));
-    }
-    
-    if (currentValues.batteryCharge > 0) {
-      addIndicator(batteryChargeY, '#1976d2', 'battery', formatValue(currentValues.batteryCharge), '-');
-    }
-    
-    if (currentValues.gridExport > 0) {
-      addIndicator(gridExportY, '#f9a825', 'grid', formatValue(currentValues.gridExport));
-    }
+    // Load indicator LAST so it's on top
+    updateIndicator('indicator-load', loadY, '#CCCCCC', 'load', formatValue(currentValues.load), '', true);
+  }
 
-    svg.appendChild(indicatorsGroup);
+  private _addLoadLineOnTop(svg: Element, loadLine: string): void {
+    if (!loadLine) return;
+    
+    // Remove any existing load line
+    const existingLoadLine = svg.querySelector('#load-line');
+    if (existingLoadLine) {
+      existingLoadLine.remove();
+    }
+    
+    // Parse the load line path from the string
+    const pathMatch = loadLine.match(/d="([^"]+)"/);
+    if (!pathMatch) return;
+    
+    const pathData = pathMatch[1];
+    
+    // Create path element
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('id', 'load-line');
+    path.setAttribute('d', pathData);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#CCCCCC');
+    path.setAttribute('stroke-width', '3');
+    path.setAttribute('opacity', '0.9');
+    
+    // Append to SVG (will be on top)
+    svg.appendChild(path);
   }
 
   private _createAreaPath(
