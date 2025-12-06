@@ -71,7 +71,7 @@ export interface ActionConfig {
 
 /** Card configuration */
 export interface EnergyFlowCardConfig {
-  view_mode?: 'default' | 'compact' | 'compact-battery';
+  view_mode?: 'default' | 'compact' | 'compact-battery' | 'chart';
   
   grid_entity: string;
   grid_name?: string;

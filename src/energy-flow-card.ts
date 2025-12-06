@@ -11,6 +11,7 @@ class EnergyFlowCard extends HTMLElement {
   private _iconCache: Map<string, string>;
   private _iconsExtracted: boolean;
   private _meters: Map<string, Meter>;
+  private _liveChartValues?: { grid: number; load: number; production: number; battery: number };
   private _speedMultiplier: number;
   private _dotsPerFlow: number;
   private _meterPositions: {
@@ -75,7 +76,7 @@ class EnergyFlowCard extends HTMLElement {
   static getConfigForm() {
     return {
       schema: [
-        { name: "view_mode", label: "View Mode", selector: { select: { options: [{value: "default", label: "Default"}, {value: "compact", label: "Compact Bar"}, {value: "compact-battery", label: "Compact with Battery"}] } } },
+        { name: "view_mode", label: "View Mode", selector: { select: { options: [{value: "default", label: "Default"}, {value: "compact", label: "Compact Bar"}, {value: "compact-battery", label: "Compact with Battery"}, {value: "chart", label: "Chart"}] } } },
         { name: "grid_entity", label: "Grid", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
         { name: "grid_name", selector: { entity_name: {} }, context: { entity: "grid_entity" } },
         { name: "grid_icon", selector: { icon: {} }, context: { icon_entity: "grid_entity" } },
@@ -183,6 +184,10 @@ class EnergyFlowCard extends HTMLElement {
       this._renderCompactView(grid, load, production, battery, viewMode);
       return;
     }
+    if (viewMode === 'chart') {
+      this._renderChartView(grid, load, production, battery);
+      return;
+    }
 
     // Get min/max values with defaults
     const gridMin = this._config.grid_min != null ? this._config.grid_min : -5000;
@@ -244,9 +249,8 @@ class EnergyFlowCard extends HTMLElement {
           <style>
             :host {
               display: block;
+              width: 100%;
               height: 100%;
-              min-height: 0;
-              min-width: 0;
             }
             ha-card {
               display: flex;
@@ -254,19 +258,13 @@ class EnergyFlowCard extends HTMLElement {
               justify-content: center;
               width: 100%;
               height: 100%;
-              min-height: 0;
-              min-width: 0;
               padding: 8px;
               box-sizing: border-box;
               overflow: hidden;
-              position: relative;
             }
             .svg-wrapper {
               width: 100%;
               height: 100%;
-              max-width: 100%;
-              max-height: 100%;
-              aspect-ratio: ${this._canvasWidth} / ${this._canvasHeight};
               display: flex;
               align-items: center;
               justify-content: center;
@@ -275,8 +273,6 @@ class EnergyFlowCard extends HTMLElement {
               display: block;
               width: 100%;
               height: 100%;
-              max-width: 100%;
-              max-height: 100%;
             }
             .flow-line {
               fill: none;
@@ -1086,10 +1082,16 @@ class EnergyFlowCard extends HTMLElement {
             :host {
               display: block;
               width: 100%;
+              height: 100%;
             }
             ha-card {
               padding: 16px;
               box-sizing: border-box;
+              width: 100%;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
             }
             .compact-view {
               display: flex;
@@ -1468,6 +1470,801 @@ class EnergyFlowCard extends HTMLElement {
 
     // Wait for DOM to settle before calculating widths
     requestAnimationFrame(updateSegments)
+  }
+
+  private async _renderChartView(grid: number, load: number, production: number, battery: number): Promise<void> {
+    // Initialize chart view on first render or view mode change
+    if (!this.querySelector('.chart-view') || this._lastViewMode !== 'chart') {
+      this.innerHTML = `
+        <ha-card>
+          <style>
+            :host {
+              display: block;
+              width: 100%;
+              height: 100%;
+            }
+            ha-card {
+              padding: 0;
+              box-sizing: border-box;
+              width: 100%;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
+            }
+            .chart-view {
+              display: flex;
+              flex-direction: column;
+              width: 100%;
+              flex: 1;
+              min-height: 0;
+            }
+            .chart-container {
+              flex: 1;
+              position: relative;
+              min-height: 200px;
+              overflow: hidden;
+            }
+            svg.chart-svg {
+              width: 100%;
+              height: 100%;
+            }
+            .loading-message {
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%);
+              color: rgb(160, 160, 160);
+              font-size: 14px;
+            }
+          </style>
+          <div class="chart-view">
+            <div class="chart-container">
+              <div class="loading-message">Loading history data...</div>
+              <svg class="chart-svg" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet">
+                <!-- Chart will be rendered here -->
+              </svg>
+            </div>
+          </div>
+        </ha-card>
+      `;
+      this._lastViewMode = 'chart';
+    }
+
+    // Store live values for indicators
+    this._liveChartValues = { grid, load, production, battery };
+    
+    // Fetch and render chart data
+    await this._fetchAndRenderChartData();
+  }
+
+  private async _fetchAndRenderChartData(): Promise<void> {
+    if (!this._hass || !this._config) return;
+
+    const hoursToShow = 12;
+    const end = new Date();
+    const start = new Date(end.getTime() - hoursToShow * 60 * 60 * 1000);
+
+    try {
+      // Fetch history for all entities in parallel
+      const [productionHistory, gridHistory, loadHistory, batteryHistory] = await Promise.all([
+        this._fetchHistory(this._config.production_entity, start, end),
+        this._fetchHistory(this._config.grid_entity, start, end),
+        this._fetchHistory(this._config.load_entity, start, end),
+        this._fetchHistory(this._config.battery_entity, start, end),
+      ]);
+
+      // Process and render the chart
+      this._drawStackedAreaChart(productionHistory, gridHistory, loadHistory, batteryHistory, hoursToShow);
+
+      // Remove loading message
+      const loadingMsg = this.querySelector('.loading-message');
+      if (loadingMsg) loadingMsg.remove();
+    } catch (error) {
+      console.error('Error fetching chart data:', error);
+      const svg = this.querySelector('.chart-svg');
+      if (svg) {
+        svg.innerHTML = `
+          <text x="400" y="200" text-anchor="middle" fill="rgb(160, 160, 160)" font-size="14">
+            Error loading chart data
+          </text>
+        `;
+      }
+    }
+  }
+
+  private async _fetchHistory(entityId: string, start: Date, end: Date): Promise<Array<{ state: string; last_changed: string }>> {
+    if (!this._hass) return [];
+
+    const url = `history/period/${start.toISOString()}?filter_entity_id=${entityId}&end_time=${end.toISOString()}&minimal_response&no_attributes`;
+    
+    try {
+      const result = await this._hass.callApi('GET', url);
+      return result[0] || [];
+    } catch (error) {
+      console.error(`Error fetching history for ${entityId}:`, error);
+      return [];
+    }
+  }
+
+  private _drawStackedAreaChart(
+    productionHistory: Array<{ state: string; last_changed: string }>,
+    gridHistory: Array<{ state: string; last_changed: string }>,
+    loadHistory: Array<{ state: string; last_changed: string }>,
+    batteryHistory: Array<{ state: string; last_changed: string }>,
+    hoursToShow: number
+  ): void {
+    const svg = this.querySelector('.chart-svg');
+    if (!svg) return;
+
+    // Chart dimensions
+    const width = 800;
+    const height = 400;
+    const margin = { top: 20, right: 150, bottom: 40, left: 60 };
+    const chartWidth = width - margin.left - margin.right;
+    const chartHeight = height - margin.top - margin.bottom;
+
+    // Collect 30-second raw data, then average into 5-minute visible ticks
+    const rawPointsPerHour = 120; // 30-second intervals (2 per minute)
+    const totalRawPoints = hoursToShow * rawPointsPerHour;
+    const visiblePointsPerHour = 12; // 5-minute intervals
+    const totalVisiblePoints = hoursToShow * visiblePointsPerHour;
+    const rawPointsPerVisibleTick = 10; // 10 raw points (5 minutes of 30-second data)
+    
+    // Quantize to the nearest 5-minute interval on the clock
+    const now = new Date();
+    const endMinutes = Math.floor(now.getMinutes() / 5) * 5;
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), endMinutes, 0, 0);
+    const start = new Date(end.getTime() - hoursToShow * 60 * 60 * 1000);
+
+    // First, collect raw 30-second data points
+    const rawDataPoints: Array<{
+      time: Date;
+      solar: number;
+      batteryDischarge: number;
+      batteryCharge: number;
+      gridImport: number;
+      gridExport: number;
+      load: number;
+    }> = [];
+
+    for (let i = 0; i < totalRawPoints; i++) {
+      // Each point is exactly 30 seconds apart
+      const time = new Date(start.getTime() + i * 30 * 1000);
+      
+      const production = this._interpolateValue(productionHistory, time);
+      const grid = this._interpolateValue(gridHistory, time);
+      const load = this._interpolateValue(loadHistory, time);
+      let battery = this._interpolateValue(batteryHistory, time);
+      
+      if (this._config?.invert_battery_data) {
+        battery = -battery;
+      }
+
+      rawDataPoints.push({
+        time,
+        solar: Math.max(0, production),
+        batteryDischarge: Math.max(0, battery),
+        batteryCharge: Math.max(0, -battery),
+        gridImport: Math.max(0, grid),
+        gridExport: Math.max(0, -grid),
+        load: Math.max(0, load),
+      });
+    }
+
+    // Average into 5-minute visible data points
+    const dataPoints: Array<{
+      time: Date;
+      solar: number;
+      batteryDischarge: number;
+      batteryCharge: number;
+      gridImport: number;
+      gridExport: number;
+      load: number;
+    }> = [];
+
+    for (let i = 0; i < totalVisiblePoints; i++) {
+      // Each visible point represents a 5-minute average
+      const visibleTime = new Date(start.getTime() + (i + 1) * 5 * 60 * 1000);
+      const startIdx = i * rawPointsPerVisibleTick;
+      const endIdx = Math.min(startIdx + rawPointsPerVisibleTick, rawDataPoints.length);
+      const windowSize = endIdx - startIdx;
+      
+      let solarSum = 0, batteryDischargeSum = 0, batteryChargeSum = 0;
+      let gridImportSum = 0, gridExportSum = 0, loadSum = 0;
+      
+      for (let j = startIdx; j < endIdx; j++) {
+        solarSum += rawDataPoints[j].solar;
+        batteryDischargeSum += rawDataPoints[j].batteryDischarge;
+        batteryChargeSum += rawDataPoints[j].batteryCharge;
+        gridImportSum += rawDataPoints[j].gridImport;
+        gridExportSum += rawDataPoints[j].gridExport;
+        loadSum += rawDataPoints[j].load;
+      }
+
+      // Debug logging for first point
+      if (i === 0) {
+        console.log('Chart data sample (5-min avg of 30-sec data):', {
+          time: visibleTime.toISOString(),
+          windowSize,
+          solar: solarSum / windowSize,
+          'invert_battery_data': this._config?.invert_battery_data
+        });
+      }
+
+      dataPoints.push({
+        time: visibleTime,
+        solar: solarSum / windowSize,
+        batteryDischarge: batteryDischargeSum / windowSize,
+        batteryCharge: batteryChargeSum / windowSize,
+        gridImport: gridImportSum / windowSize,
+        gridExport: gridExportSum / windowSize,
+        load: loadSum / windowSize,
+      });
+    }
+
+    // Find max values for scaling - use single consistent scale
+    const maxSupply = Math.max(...dataPoints.map(d => d.solar + d.batteryDischarge + d.gridImport), ...dataPoints.map(d => d.load));
+    const maxDemand = Math.max(...dataPoints.map(d => d.batteryCharge + d.gridExport));
+    
+    // Allocate chart space proportionally based on actual data ranges
+    const totalRange = maxSupply + maxDemand;
+    const supplyRatio = totalRange > 0 ? maxSupply / totalRange : 0.5;
+    const demandRatio = totalRange > 0 ? maxDemand / totalRange : 0.5;
+    
+    // Single consistent scale (pixels per watt) - use the larger requirement
+    const supplyScale = maxSupply > 0 ? (chartHeight * supplyRatio) / (maxSupply * 1.1) : 1;
+    const demandScale = maxDemand > 0 ? (chartHeight * demandRatio) / (maxDemand * 1.1) : 1;
+    const scale = Math.min(supplyScale, demandScale); // Use the smaller scale to ensure both fit
+    
+    // Calculate actual heights used with consistent scale
+    const supplyHeight = maxSupply * scale * 1.1;
+    const demandHeight = maxDemand * scale * 1.1;
+    const zeroLineY = margin.top + supplyHeight; // Zero line positioned based on supply height needed
+
+    // Create SVG paths for stacked areas using the same scale
+    const supplyPaths = this._createStackedPaths(dataPoints, chartWidth, supplyHeight, scale, margin, 'supply', zeroLineY);
+    const demandPaths = this._createStackedPaths(dataPoints, chartWidth, demandHeight, scale, margin, 'demand', zeroLineY);
+
+    // Color scheme
+    const colors = {
+      solar: '#256028',
+      batteryDischarge: '#104b79',
+      batteryCharge: '#104b79',
+      gridImport: '#7a211b',
+      gridExport: '#7a6b1b',
+      load: '#CCCCCC',
+    };
+
+    // Create load line (on positive/supply side)
+    const loadLine = this._createLoadLine(dataPoints, chartWidth, supplyHeight, scale, margin, zeroLineY);
+
+    // Build SVG content
+    let svgContent = `
+      <!-- Grid lines -->
+      <g opacity="0.1">
+        ${this._createGridLines(chartWidth, chartHeight, margin, Math.max(maxSupply, maxDemand))}
+      </g>
+      
+      <!-- Zero line (dynamic position based on supply height) -->
+      <line 
+        x1="${margin.left}" 
+        y1="${zeroLineY}" 
+        x2="${margin.left + chartWidth}" 
+        y2="${zeroLineY}" 
+        stroke="rgb(160, 160, 160)" 
+        stroke-width="1" 
+        stroke-dasharray="4,4"
+      />
+      
+      <!-- Demand areas (below zero line) -->
+      ${demandPaths}
+      
+      <!-- Supply areas (above zero line) -->
+      ${supplyPaths}
+      
+      <!-- Load line (thick gray line on supply side) -->
+      ${loadLine}
+      
+      <!-- Time axis labels -->
+      ${this._createTimeLabels(chartWidth, chartHeight, margin, hoursToShow)}
+      
+      <!-- Y-axis labels -->
+      ${this._createYAxisLabels(supplyHeight, demandHeight, margin, maxSupply, maxDemand, zeroLineY)}
+      
+      <!-- Floating indicators with current values -->
+      ${this._createFloatingIndicators(dataPoints, chartWidth, chartHeight, scale, scale, margin, width)}
+      
+      <!-- Hidden icon sources for extraction -->
+      ${this._createChartIconSources()}
+    `;
+
+    svg.innerHTML = svgContent;
+    
+    // Extract icon paths and render native SVG indicators
+    requestAnimationFrame(() => {
+      this._extractChartIcons(dataPoints, chartWidth, supplyHeight, demandHeight, scale, scale, margin, zeroLineY);
+    });
+  }
+
+  private _interpolateValue(history: Array<{ state: string; last_changed: string }>, targetTime: Date): number {
+    if (history.length === 0) return 0;
+
+    // Find the closest data point
+    let closestPoint = history[0];
+    let minDiff = Math.abs(new Date(history[0].last_changed).getTime() - targetTime.getTime());
+
+    for (const point of history) {
+      const diff = Math.abs(new Date(point.last_changed).getTime() - targetTime.getTime());
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestPoint = point;
+      }
+    }
+
+    return parseFloat(closestPoint.state) || 0;
+  }
+
+  private _createStackedPaths(
+    dataPoints: Array<any>,
+    chartWidth: number,
+    chartHeight: number,
+    yScale: number,
+    margin: { top: number; right: number; bottom: number; left: number },
+    type: 'supply' | 'demand',
+    zeroLineY: number
+  ): string {
+    const totalPoints = dataPoints.length;
+    const xStep = chartWidth / (totalPoints - 1);
+
+    if (type === 'supply') {
+      // Stacked supply: solar (bottom) → battery discharge → grid import (top)
+      const solarPath = this._createAreaPath(dataPoints, xStep, zeroLineY, yScale, margin, 
+        d => d.solar, 0, 'down');
+      
+      const batteryPath = this._createAreaPath(dataPoints, xStep, zeroLineY, yScale, margin,
+        d => d.batteryDischarge, d => d.solar, 'down');
+      
+      const gridPath = this._createAreaPath(dataPoints, xStep, zeroLineY, yScale, margin,
+        d => d.gridImport, d => d.solar + d.batteryDischarge, 'down');
+
+      return `
+        ${gridPath ? `<path d="${gridPath}" fill="#c62828" opacity="0.8" />` : ''}
+        ${batteryPath ? `<path d="${batteryPath}" fill="#1976d2" opacity="0.8" />` : ''}
+        ${solarPath ? `<path d="${solarPath}" fill="#388e3c" opacity="0.85" />` : ''}
+      `;
+    } else {
+      // Stacked demand: battery charge (bottom) → grid export (top)
+      const batteryChargePath = this._createAreaPath(dataPoints, xStep, zeroLineY, yScale, margin,
+        d => d.batteryCharge, 0, 'up');
+      
+      const gridExportPath = this._createAreaPath(dataPoints, xStep, zeroLineY, yScale, margin,
+        d => d.gridExport, d => d.batteryCharge, 'up');
+
+      return `
+        ${gridExportPath ? `<path d="${gridExportPath}" fill="#f9a825" opacity="0.8" />` : ''}
+        ${batteryChargePath ? `<path d="${batteryChargePath}" fill="#1976d2" opacity="0.8" />` : ''}
+      `;
+    }
+  }
+
+  private _createLoadLine(
+    dataPoints: Array<any>,
+    chartWidth: number,
+    chartHeight: number,
+    yScale: number,
+    margin: { top: number; right: number; bottom: number; left: number },
+    zeroLineY: number
+  ): string {
+    if (!dataPoints || dataPoints.length === 0) return '';
+
+    const xStep = chartWidth / (dataPoints.length - 1);
+
+    // Create line path showing load on the supply (positive) side
+    const pathPoints = dataPoints.map((d, i) => {
+      const x = margin.left + i * xStep;
+      const y = zeroLineY - d.load * yScale; // Positive values go up from zero line
+      return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
+    }).join(' ');
+
+    return `<path d="${pathPoints}" fill="none" stroke="#CCCCCC" stroke-width="3" opacity="0.9" />`;
+  }
+
+  private _createFloatingIndicators(
+    dataPoints: Array<any>,
+    chartWidth: number,
+    chartHeight: number,
+    supplyScale: number,
+    demandScale: number,
+    margin: { top: number; right: number; bottom: number; left: number },
+    width: number
+  ): string {
+    // Indicators are now rendered via _extractChartIcons as native SVG
+    // This method just returns empty string to avoid double rendering
+    return '';
+  }
+
+  private _createChartIconSources(): string {
+    const loadIcon = this._getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt');
+    const solarIcon = this._getIcon('production_icon', 'production_entity', 'mdi:solar-power');
+    const batteryIcon = this._getIcon('battery_icon', 'battery_entity', 'mdi:battery');
+    const gridIcon = this._getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower');
+
+    return `
+      <foreignObject id="chart-icon-source-load" x="-100" y="-100" width="24" height="24">
+        <div xmlns="http://www.w3.org/1999/xhtml">
+          <ha-icon icon="${loadIcon}"></ha-icon>
+        </div>
+      </foreignObject>
+      <foreignObject id="chart-icon-source-solar" x="-100" y="-100" width="24" height="24">
+        <div xmlns="http://www.w3.org/1999/xhtml">
+          <ha-icon icon="${solarIcon}"></ha-icon>
+        </div>
+      </foreignObject>
+      <foreignObject id="chart-icon-source-battery" x="-100" y="-100" width="24" height="24">
+        <div xmlns="http://www.w3.org/1999/xhtml">
+          <ha-icon icon="${batteryIcon}"></ha-icon>
+        </div>
+      </foreignObject>
+      <foreignObject id="chart-icon-source-grid" x="-100" y="-100" width="24" height="24">
+        <div xmlns="http://www.w3.org/1999/xhtml">
+          <ha-icon icon="${gridIcon}"></ha-icon>
+        </div>
+      </foreignObject>
+    `;
+  }
+
+  private async _extractChartIcons(
+    dataPoints: Array<any>,
+    chartWidth: number,
+    supplyHeight: number,
+    demandHeight: number,
+    supplyScale: number,
+    demandScale: number,
+    margin: { top: number; right: number; bottom: number; left: number },
+    zeroLineY: number
+  ): Promise<void> {
+    const svg = this.querySelector('.chart-svg');
+    if (!svg || !dataPoints || dataPoints.length === 0) return;
+
+    const iconTypes = ['load', 'solar', 'battery', 'grid'];
+    const iconPaths: { [key: string]: string | null } = {};
+
+    // Extract all icon paths
+    for (const type of iconTypes) {
+      const iconSourceFO = svg.querySelector(`#chart-icon-source-${type}`);
+      if (!iconSourceFO) continue;
+
+      const haIconDiv = iconSourceFO.querySelector('div');
+      if (!haIconDiv) continue;
+
+      const iconSource = haIconDiv.querySelector('ha-icon');
+      if (!iconSource) continue;
+
+      const iconName = iconSource.getAttribute('icon');
+      if (!iconName) continue;
+
+      // Check cache first
+      if (this._iconCache.has(iconName)) {
+        iconPaths[type] = this._iconCache.get(iconName) || null;
+        continue;
+      }
+
+      // Extract from shadow DOM
+      const pathData = await this._extractIconPath(iconSource, iconName);
+      iconPaths[type] = pathData;
+      if (pathData) {
+        this._iconCache.set(iconName, pathData);
+      }
+    }
+
+    // Render native SVG indicators
+    this._renderChartIndicators(svg, dataPoints, chartWidth, supplyHeight, demandHeight, supplyScale, demandScale, margin, iconPaths, zeroLineY);
+  }
+
+  private async _extractIconPath(iconElement: Element, iconName: string, maxAttempts = 10): Promise<string | null> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const shadowRoot = iconElement.shadowRoot;
+        if (!shadowRoot) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          continue;
+        }
+
+        let svgElement = shadowRoot.querySelector('svg');
+        
+        if (!svgElement) {
+          const haSvgIcon = shadowRoot.querySelector('ha-svg-icon');
+          if (haSvgIcon && haSvgIcon.shadowRoot) {
+            svgElement = haSvgIcon.shadowRoot.querySelector('svg');
+          }
+        }
+
+        if (!svgElement) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          continue;
+        }
+
+        const pathElement = svgElement.querySelector('path');
+        if (!pathElement) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          continue;
+        }
+
+        const pathData = pathElement.getAttribute('d');
+        if (pathData) {
+          return pathData;
+        }
+      } catch (e) {
+        console.error(`Failed to extract icon path for ${iconName} (attempt ${attempt + 1}):`, e);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    return null;
+  }
+
+  private _renderChartIndicators(
+    svg: Element,
+    dataPoints: Array<any>,
+    chartWidth: number,
+    supplyHeight: number,
+    demandHeight: number,
+    supplyScale: number,
+    demandScale: number,
+    margin: { top: number; right: number; bottom: number; left: number },
+    iconPaths: { [key: string]: string | null },
+    zeroLineY: number
+  ): void {
+    // Remove old indicators group if it exists
+    const oldIndicators = svg.querySelector('#chart-indicators');
+    if (oldIndicators) {
+      oldIndicators.remove();
+    }
+
+    // Remove hidden icon sources
+    const iconSources = svg.querySelectorAll('[id^="chart-icon-source-"]');
+    iconSources.forEach(source => source.remove());
+
+    // Use live values for indicators if available, otherwise use last historical point
+    let currentValues;
+    if (this._liveChartValues) {
+      const { grid, load, production, battery } = this._liveChartValues;
+      currentValues = {
+        load: Math.max(0, load),
+        solar: Math.max(0, production),
+        batteryDischarge: Math.max(0, battery),
+        batteryCharge: Math.max(0, -battery),
+        gridImport: Math.max(0, grid),
+        gridExport: Math.max(0, -grid),
+      };
+    } else {
+      currentValues = dataPoints[dataPoints.length - 1];
+    }
+
+    const rightX = margin.left + chartWidth;
+
+    // Calculate Y positions using live values (relative to dynamic zero line)
+    const loadY = zeroLineY - currentValues.load * supplyScale;
+    const solarY = zeroLineY - currentValues.solar * supplyScale;
+    const batteryDischargeY = zeroLineY - (currentValues.solar + currentValues.batteryDischarge) * supplyScale;
+    const gridImportY = zeroLineY - (currentValues.solar + currentValues.batteryDischarge + currentValues.gridImport) * supplyScale;
+    const batteryChargeY = zeroLineY + currentValues.batteryCharge * demandScale;
+    const gridExportY = zeroLineY + (currentValues.batteryCharge + currentValues.gridExport) * demandScale;
+
+    const formatValue = (value: number): string => {
+      return `${Math.round(value)} W`;
+    };
+
+    // Create indicators group
+    const indicatorsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    indicatorsGroup.setAttribute('id', 'chart-indicators');
+
+    // Helper to add indicator
+    const addIndicator = (y: number, color: string, iconType: string, value: string, prefix = '') => {
+      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      group.setAttribute('transform', `translate(${rightX + 10}, ${y})`);
+
+      // Circle
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('r', '5');
+      circle.setAttribute('fill', color);
+      group.appendChild(circle);
+
+      // Icon
+      const iconPath = iconPaths[iconType];
+      if (iconPath) {
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        icon.setAttribute('transform', 'translate(10, -8) scale(0.67)');
+        
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', iconPath);
+        path.setAttribute('fill', color);
+        icon.appendChild(path);
+        
+        group.appendChild(icon);
+      }
+
+      // Text
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', '28');
+      text.setAttribute('y', '4');
+      text.setAttribute('fill', color);
+      text.setAttribute('font-size', '12');
+      text.setAttribute('font-weight', '600');
+      text.textContent = `${prefix}${value}`;
+      group.appendChild(text);
+
+      indicatorsGroup.appendChild(group);
+    };
+
+    // Add all indicators using current live values
+    addIndicator(loadY, '#CCCCCC', 'load', formatValue(currentValues.load));
+    
+    if (currentValues.solar > 0) {
+      addIndicator(solarY, '#388e3c', 'solar', formatValue(currentValues.solar));
+    }
+    
+    if (currentValues.batteryDischarge > 0) {
+      addIndicator(batteryDischargeY, '#1976d2', 'battery', formatValue(currentValues.batteryDischarge), '+');
+    }
+    
+    if (currentValues.gridImport > 0) {
+      addIndicator(gridImportY, '#c62828', 'grid', formatValue(currentValues.gridImport));
+    }
+    
+    if (currentValues.batteryCharge > 0) {
+      addIndicator(batteryChargeY, '#1976d2', 'battery', formatValue(currentValues.batteryCharge), '-');
+    }
+    
+    if (currentValues.gridExport > 0) {
+      addIndicator(gridExportY, '#f9a825', 'grid', formatValue(currentValues.gridExport));
+    }
+
+    svg.appendChild(indicatorsGroup);
+  }
+
+  private _createAreaPath(
+    dataPoints: Array<any>,
+    xStep: number,
+    centerY: number,
+    yScale: number,
+    margin: { top: number; right: number; bottom: number; left: number },
+    valueGetter: (d: any) => number,
+    baseValueGetter: number | ((d: any) => number),
+    direction: 'up' | 'down'
+  ): string | null {
+    const points: Array<{ x: number; y: number }> = [];
+    const basePoints: Array<{ x: number; y: number }> = [];
+    
+    let hasData = false;
+
+    dataPoints.forEach((d, i) => {
+      const x = margin.left + i * xStep;
+      const value = valueGetter(d);
+      const baseValue = typeof baseValueGetter === 'function' ? baseValueGetter(d) : baseValueGetter;
+      
+      if (value > 0) hasData = true;
+      
+      const yOffset = direction === 'down' 
+        ? -(value + baseValue) * yScale 
+        : (value + baseValue) * yScale;
+      const baseYOffset = direction === 'down'
+        ? -baseValue * yScale
+        : baseValue * yScale;
+      
+      points.push({ x, y: centerY + yOffset });
+      basePoints.push({ x, y: centerY + baseYOffset });
+    });
+
+    if (!hasData) return null;
+
+    // Create path: go along top edge, then back along bottom edge
+    let path = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      path += ` L ${points[i].x} ${points[i].y}`;
+    }
+    for (let i = basePoints.length - 1; i >= 0; i--) {
+      path += ` L ${basePoints[i].x} ${basePoints[i].y}`;
+    }
+    path += ' Z';
+
+    return path;
+  }
+
+  private _createGridLines(chartWidth: number, chartHeight: number, margin: { top: number; left: number }, maxValue: number): string {
+    const lines: string[] = [];
+    const numLines = 4;
+    
+    for (let i = 0; i <= numLines; i++) {
+      const y = margin.top + (i * chartHeight / numLines);
+      lines.push(`<line x1="${margin.left}" y1="${y}" x2="${margin.left + chartWidth}" y2="${y}" stroke="white" stroke-width="1" />`);
+    }
+    
+    return lines.join('\n');
+  }
+
+  private _createTimeLabels(chartWidth: number, chartHeight: number, margin: { top: number; bottom: number; left: number }, hoursToShow: number): string {
+    const labels: string[] = [];
+    const numLabels = 6;
+    const now = new Date();
+    
+    // Calculate quantized time intervals
+    for (let i = 0; i <= numLabels; i++) {
+      const hoursAgo = hoursToShow - (i * hoursToShow / numLabels);
+      const time = new Date(now.getTime() - hoursAgo * 60 * 60 * 1000);
+      
+      // Quantize to nearest 30-minute mark
+      const currentMinutes = time.getMinutes();
+      const quantizedMinutes = currentMinutes < 15 ? 0 : (currentMinutes < 45 ? 30 : 0);
+      const hourAdjust = (currentMinutes >= 45) ? 1 : 0;
+      
+      time.setMinutes(quantizedMinutes);
+      time.setSeconds(0);
+      time.setMilliseconds(0);
+      if (hourAdjust) {
+        time.setHours(time.getHours() + hourAdjust);
+      }
+      
+      const x = margin.left + (i * chartWidth / numLabels);
+      const y = margin.top + chartHeight + 20;
+      
+      // Format as 12-hour AM/PM
+      const hours = time.getHours();
+      const hours12 = hours === 0 ? 12 : (hours > 12 ? hours - 12 : hours);
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      
+      labels.push(`
+        <text x="${x}" y="${y}" text-anchor="middle" fill="rgb(160, 160, 160)" font-size="11">
+          ${hours12} ${ampm}
+        </text>
+      `);
+    }
+    
+    return labels.join('\n');
+  }
+
+  private _createYAxisLabels(
+    supplyHeight: number,
+    demandHeight: number,
+    margin: { top: number; left: number },
+    maxSupply: number,
+    maxDemand: number,
+    zeroLineY: number
+  ): string {
+    const labels: string[] = [];
+    
+    // Top label (max supply)
+    labels.push(`<text x="${margin.left - 10}" y="${margin.top + 5}" text-anchor="end" fill="rgb(160, 160, 160)" font-size="11">${Math.round(maxSupply)}W</text>`);
+    
+    // Zero line label
+    labels.push(`<text x="${margin.left - 10}" y="${zeroLineY + 5}" text-anchor="end" fill="rgb(160, 160, 160)" font-size="11">0</text>`);
+    
+    // Bottom label (max demand, shown as negative)
+    labels.push(`<text x="${margin.left - 10}" y="${zeroLineY + demandHeight + 5}" text-anchor="end" fill="rgb(160, 160, 160)" font-size="11">-${Math.round(maxDemand)}W</text>`);
+    
+    return labels.join('\n');
+  }
+
+  private _createChartLegend(width: number, margin: { top: number; right: number }, colors: any): string {
+    const legendItems = [
+      { label: 'Solar', color: colors.solar },
+      { label: 'Battery', color: colors.batteryDischarge },
+      { label: 'Grid Import', color: colors.gridImport },
+      { label: 'Grid Export', color: colors.gridExport },
+      { label: 'Load', color: colors.load },
+    ];
+
+    const legendX = width - margin.right - 10;
+    let legendY = margin.top;
+
+    return legendItems.map((item, i) => {
+      const y = legendY + (i * 20);
+      return `
+        <rect x="${legendX - 80}" y="${y - 10}" width="12" height="12" fill="${item.color}" opacity="0.8" />
+        <text x="${legendX - 64}" y="${y}" fill="rgb(200, 200, 200)" font-size="11">${item.label}</text>
+      `;
+    }).join('\n');
   }
 
   private _updateSegmentVisibility(segment: Element, pixelWidth: number, hasValue: boolean): void {
