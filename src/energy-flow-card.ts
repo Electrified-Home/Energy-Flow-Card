@@ -40,6 +40,11 @@ class EnergyFlowCard extends HTMLElement {
     }>;
   };
   private _chartRenderPending: boolean;
+  private _indicatorUpdateTimeout?: number;
+  private _lastIndicatorUpdate: number;
+  private _visibilityObserver?: IntersectionObserver;
+  private _isVisible: boolean;
+  private _pendingUpdate: boolean;
 
   constructor() {
     super();
@@ -52,6 +57,9 @@ class EnergyFlowCard extends HTMLElement {
     this._iconExtractionTimeouts = new Set();
     this._chartDataCache = undefined;
     this._chartRenderPending = false;
+    this._lastIndicatorUpdate = 0;
+    this._isVisible = true;
+    this._pendingUpdate = false;
     
     // Meter instances
     this._meters = new Map();
@@ -145,6 +153,19 @@ class EnergyFlowCard extends HTMLElement {
     }
     this._resizeObserver.observe(this);
     
+    // Set up visibility observer to pause updates when not visible
+    this._visibilityObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        this._isVisible = entry.isIntersecting;
+        if (this._isVisible && this._pendingUpdate) {
+          // When becoming visible, apply pending update
+          this._pendingUpdate = false;
+          this._updateChartIndicators();
+        }
+      });
+    }, { threshold: 0 });
+    this._visibilityObserver.observe(this);
+    
     // Animation loop will be started on first render to avoid race conditions
   }
 
@@ -152,6 +173,11 @@ class EnergyFlowCard extends HTMLElement {
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
+    }
+    
+    if (this._visibilityObserver) {
+      this._visibilityObserver.disconnect();
+      this._visibilityObserver = undefined;
     }
     
     // Stop all meter animations
@@ -166,6 +192,12 @@ class EnergyFlowCard extends HTMLElement {
     // Clear icon extraction timeouts
     this._iconExtractionTimeouts.forEach(timeout => clearTimeout(timeout));
     this._iconExtractionTimeouts.clear();
+    
+    // Clear indicator update timeout
+    if (this._indicatorUpdateTimeout) {
+      clearTimeout(this._indicatorUpdateTimeout);
+      this._indicatorUpdateTimeout = undefined;
+    }
     
     // Clear chart data cache to prevent memory leaks
     this._chartDataCache = undefined;
@@ -224,7 +256,8 @@ class EnergyFlowCard extends HTMLElement {
         this._renderChartView(grid, load, production, battery);
       } else {
         // Just update the live indicators without re-fetching/re-rendering
-        this._updateChartIndicators();
+        // Throttle updates to max once per second
+        this._throttledUpdateChartIndicators();
       }
       return;
     }
@@ -1573,8 +1606,10 @@ class EnergyFlowCard extends HTMLElement {
     // Store live values for indicators
     this._liveChartValues = { grid, load, production, battery };
     
-    // Fetch and render chart data
-    await this._fetchAndRenderChartData();
+    // Defer chart data fetching to not block other cards
+    setTimeout(() => {
+      this._fetchAndRenderChartData();
+    }, 100);
   }
 
   private async _fetchAndRenderChartData(): Promise<void> {
@@ -1593,7 +1628,10 @@ class EnergyFlowCard extends HTMLElement {
 
     // Use cached data if available and fresh
     if (this._chartDataCache && cacheAge < cacheMaxAge) {
-      this._renderChartFromCache();
+      // Defer cache rendering to next frame to not block
+      requestAnimationFrame(() => {
+        this._renderChartFromCache();
+      });
       return;
     }
 
@@ -1610,13 +1648,23 @@ class EnergyFlowCard extends HTMLElement {
         this._fetchHistory(this._config.battery_entity, start, end),
       ]);
 
-      // Process and render the chart
-      this._drawStackedAreaChart(productionHistory, gridHistory, loadHistory, batteryHistory, hoursToShow);
-      this._chartRenderPending = false;
+      // Defer heavy processing to next idle period (with fallback for Safari/iOS)
+      const processChart = () => {
+        // Process and render the chart
+        this._drawStackedAreaChart(productionHistory, gridHistory, loadHistory, batteryHistory, hoursToShow);
+        this._chartRenderPending = false;
 
-      // Remove loading message
-      const loadingMsg = this.querySelector('.loading-message');
-      if (loadingMsg) loadingMsg.remove();
+        // Remove loading message
+        const loadingMsg = this.querySelector('.loading-message');
+        if (loadingMsg) loadingMsg.remove();
+      };
+
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(processChart, { timeout: 2000 });
+      } else {
+        // Fallback for browsers without requestIdleCallback (Safari/iOS)
+        setTimeout(processChart, 0);
+      }
     } catch (error) {
       console.error('Error fetching chart data:', error);
       this._chartRenderPending = false;
@@ -1683,6 +1731,38 @@ class EnergyFlowCard extends HTMLElement {
 
     const loadingMsg = this.querySelector('.loading-message');
     if (loadingMsg) loadingMsg.remove();
+  }
+
+  private _throttledUpdateChartIndicators(): void {
+    // If not visible, mark update as pending and skip
+    if (!this._isVisible) {
+      this._pendingUpdate = true;
+      return;
+    }
+
+    // Clear any pending timeout
+    if (this._indicatorUpdateTimeout) {
+      clearTimeout(this._indicatorUpdateTimeout);
+      this._indicatorUpdateTimeout = undefined;
+    }
+
+    const now = Date.now();
+    const timeSinceLastUpdate = now - this._lastIndicatorUpdate;
+    const minUpdateInterval = 250; // Reduced to 250ms for more responsive updates
+
+    if (timeSinceLastUpdate >= minUpdateInterval) {
+      // Update immediately if enough time has passed
+      this._updateChartIndicators();
+      this._lastIndicatorUpdate = now;
+    } else {
+      // Schedule update for the next interval
+      const delay = minUpdateInterval - timeSinceLastUpdate;
+      this._indicatorUpdateTimeout = window.setTimeout(() => {
+        this._updateChartIndicators();
+        this._lastIndicatorUpdate = Date.now();
+        this._indicatorUpdateTimeout = undefined;
+      }, delay);
+    }
   }
 
   private _updateChartIndicators(): void {
