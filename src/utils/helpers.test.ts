@@ -182,7 +182,7 @@ describe('helpers', () => {
       handleAction(mockHass, fireEvent, config, 'sensor.test');
 
       expect(window.history.pushState).toHaveBeenCalledWith(null, '', '/lovelace/energy');
-      expect(fireEvent).toHaveBeenCalledWith('location-changed', { replace: false });
+      expect(fireEvent).toHaveBeenCalledWith('location-changed', { replace: false, path: '/lovelace/energy' });
     });
 
     it('should handle url action', () => {

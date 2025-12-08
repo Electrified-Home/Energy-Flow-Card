@@ -67,11 +67,14 @@ export function handleAction(
       break;
       
     case 'navigate':
-      if (config.path) {
-        history.pushState(null, '', config.path);
-        fireEvent('location-changed', { replace: false });
-        // Also emit on window so HA router sees it even outside shadow roots
-        window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
+      {
+        const path = config.path ?? config.navigation_path;
+        if (path) {
+          history.pushState(null, '', path);
+          fireEvent('location-changed', { replace: false, path });
+          // Also emit on window so HA router sees it even outside shadow roots
+          window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false, path }, bubbles: true, composed: true }));
+        }
       }
       break;
       
