@@ -339,6 +339,16 @@ describe('DefaultRenderer', () => {
         renderer.stop();
       }).not.toThrow();
     });
+
+    it('clears icon extraction timeouts', () => {
+      (renderer as any).iconExtractionTimeouts.add(123 as any);
+      const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+
+      renderer.stop();
+
+      expect((renderer as any).iconExtractionTimeouts.size).toBe(0);
+      expect(clearSpy).toHaveBeenCalledWith(123);
+    });
   });
 
   describe('clear', () => {
@@ -400,6 +410,20 @@ describe('DefaultRenderer', () => {
       });
       
       expect(container.querySelector('.energy-flow-svg')).toBeTruthy();
+    });
+  });
+
+  describe('renderIconPath', () => {
+    it('renders a path when data provided', () => {
+      const target = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      (renderer as any).renderIconPath(target, 'M0 0h10');
+      expect(target.querySelector('path')).toBeTruthy();
+    });
+
+    it('renders a circle fallback when no data', () => {
+      const target = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      (renderer as any).renderIconPath(target, null);
+      expect(target.querySelector('circle')).toBeTruthy();
     });
   });
 

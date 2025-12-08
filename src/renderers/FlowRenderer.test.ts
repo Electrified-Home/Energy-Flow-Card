@@ -315,6 +315,35 @@ describe('FlowRenderer', () => {
       expect(flowLine).toBeTruthy();
       // FlowLine handles velocity internally
     });
+
+    it('uses minimal styles for tiny power', () => {
+      renderer['drawFlow'](flowLayer, 'test-flow', positions.production, positions.load, 50, '#4caf50');
+
+      const mainPath = flowLayer.querySelector('#path-test-flow');
+      expect(mainPath?.getAttribute('stroke-opacity')).toBe('0.25');
+      expect(mainPath?.getAttribute('stroke-width')).toBe('2');
+    });
+
+    it('interpolates styles for mid-range power', () => {
+      renderer['drawFlow'](flowLayer, 'test-flow', positions.production, positions.load, 150, '#4caf50');
+
+      const mainPath = flowLayer.querySelector('#path-test-flow');
+      expect(parseFloat(mainPath?.getAttribute('stroke-opacity') || '0')).toBeCloseTo(0.625, 3);
+      const width = parseFloat(mainPath?.getAttribute('stroke-width') || '0');
+      expect(width).toBeGreaterThan(2);
+      expect(width).toBeLessThan(3);
+    });
+
+    it('sets zero velocity when path length is zero', () => {
+      renderer['drawFlow'](flowLayer, 'test-flow', positions.production, positions.load, 500, '#4caf50');
+
+      const flowId = Array.from(renderer['flowLines'].keys())[0]!;
+      const flowLine = renderer['flowLines'].get(flowId) as any;
+      flowLine.pathLength = 0;
+
+      expect(() => flowLine.update(500, '#4caf50')).not.toThrow();
+      expect(() => flowLine.animate(100)).not.toThrow();
+    });
   });
 
   describe('removeFlow', () => {

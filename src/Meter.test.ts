@@ -339,6 +339,91 @@ describe('Meter', () => {
       expect(meter['_animationFrameId']).toBe(null);
       expect(meter['_lastAnimationTime']).toBe(null);
     });
+
+    test('stopAnimation is safe when not running', () => {
+      const meter = new Meter('test', 100, 0, 1000, false, 'Test', 'mdi:test', 'WATTS');
+
+      expect(() => meter.stopAnimation()).not.toThrow();
+    });
+  });
+
+  describe('Tap Actions', () => {
+    test('fires more-info by default', () => {
+      const fireEvent = vi.fn();
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, false, undefined, 'sensor.test', fireEvent);
+
+      const el = meter.createElement();
+      el.dispatchEvent(new Event('click'));
+
+      expect(fireEvent).toHaveBeenCalledWith('hass-more-info', { entityId: 'sensor.test' });
+    });
+
+    test('handles navigate action', () => {
+      const fireEvent = vi.fn();
+      const pushSpy = vi.spyOn(history, 'pushState');
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, false, { action: 'navigate', path: '/foo' }, 'sensor.test', fireEvent);
+
+      const el = meter.createElement();
+      el.dispatchEvent(new Event('click'));
+
+      expect(pushSpy).toHaveBeenCalledWith(null, '', '/foo');
+      expect(fireEvent).toHaveBeenCalledWith('location-changed', { replace: false });
+    });
+
+    test('handles url action', () => {
+      const fireEvent = vi.fn();
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null as any);
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, false, { action: 'url', path: 'https://example.com' }, 'sensor.test', fireEvent);
+
+      const el = meter.createElement();
+      el.dispatchEvent(new Event('click'));
+
+      expect(openSpy).toHaveBeenCalledWith('https://example.com');
+    });
+
+    test('handles toggle action', () => {
+      const fireEvent = vi.fn();
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, false, { action: 'toggle' }, 'light.kitchen', fireEvent);
+
+      const el = meter.createElement();
+      el.dispatchEvent(new Event('click'));
+
+      expect(fireEvent).toHaveBeenCalledWith('call-service', {
+        domain: 'homeassistant',
+        service: 'toggle',
+        service_data: { entity_id: 'light.kitchen' }
+      });
+    });
+
+    test('handles call-service action', () => {
+      const fireEvent = vi.fn();
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, false, {
+        action: 'call-service',
+        service: 'light.turn_on',
+        service_data: { brightness: 150 },
+        target: { entity_id: 'light.kitchen' }
+      }, 'light.kitchen', fireEvent);
+
+      const el = meter.createElement();
+      el.dispatchEvent(new Event('click'));
+
+      expect(fireEvent).toHaveBeenCalledWith('call-service', {
+        domain: 'light',
+        service: 'turn_on',
+        service_data: { brightness: 150 },
+        target: { entity_id: 'light.kitchen' }
+      });
+    });
+
+    test('skips action when set to none', () => {
+      const fireEvent = vi.fn();
+      const meter = new Meter('test', 0, 0, 1000, false, 'Test', 'mdi:test', 'WATTS', false, false, { action: 'none' }, 'sensor.test', fireEvent);
+
+      const el = meter.createElement();
+      el.dispatchEvent(new Event('click'));
+
+      expect(fireEvent).not.toHaveBeenCalled();
+    });
   });
 
   describe('Dimming Behavior', () => {

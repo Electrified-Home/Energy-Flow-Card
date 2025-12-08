@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { ChartRenderer } from './chart-renderer';
-import type { ChartConfig, LiveChartValues } from './chart-renderer';
-import type { HomeAssistant } from '../types/HASS.d.ts';
+import { ChartRenderer } from './ChartRenderer';
+import type { ChartConfig, LiveChartValues } from './ChartRenderer';
+import type { HomeAssistant } from '../types/HASS';
 
 describe('ChartRenderer', () => {
   let container: HTMLElement;
@@ -28,12 +28,13 @@ describe('ChartRenderer', () => {
       invert_battery_data: false
     };
 
-    // Mock hass with callWS
+    // Mock hass with required APIs
     hass = {
       states: {},
       callService: vi.fn(),
       localize: vi.fn((key: string) => key),
-      callWS: vi.fn().mockResolvedValue([])
+      callWS: vi.fn().mockResolvedValue([]),
+      callApi: vi.fn().mockResolvedValue([[]])
     } as unknown as HomeAssistant;
 
     // Mock fireEvent
@@ -76,7 +77,7 @@ describe('ChartRenderer', () => {
       renderer.render(container);
 
       // Wait for async initialization
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
 
       const chartView = container.querySelector('.chart-view');
       expect(chartView).toBeTruthy();
@@ -85,7 +86,7 @@ describe('ChartRenderer', () => {
     it('should create SVG container', async () => {
       renderer.render(container);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
 
       const svg = container.querySelector('svg.chart-svg');
       expect(svg).toBeTruthy();
@@ -93,12 +94,12 @@ describe('ChartRenderer', () => {
 
     it('should not recreate structure on subsequent renders', async () => {
       renderer.render(container);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       const firstView = container.querySelector('.chart-view');
 
       renderer.render(container);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       const secondView = container.querySelector('.chart-view');
       expect(firstView).toBe(secondView);
@@ -159,8 +160,38 @@ describe('ChartRenderer', () => {
       renderer.updateLiveValues(liveValues);
       renderer.render(container); // Trigger indicator update
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
       expect(container.querySelector('.chart-view')).toBeTruthy();
+    });
+  });
+
+  describe('fetch errors', () => {
+    it('handles callApi rejection gracefully', async () => {
+      (hass.callApi as any).mockRejectedValueOnce(new Error('boom'));
+      renderer.render(container);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const svg = container.querySelector('svg.chart-svg');
+      expect(svg).toBeTruthy();
+    });
+  });
+
+  describe('cache reuse', () => {
+    it('reuses cached history within max age', async () => {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      const nowIso = new Date().toISOString();
+      hass.callApi = vi.fn().mockResolvedValue([[{ state: '1', last_changed: nowIso }]]) as any;
+
+      await renderer.fetchAndRenderChart(svg, 1);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      const firstCalls = (hass.callApi as any).mock.calls.length;
+
+      await renderer.fetchAndRenderChart(svg, 1);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      const secondCalls = (hass.callApi as any).mock.calls.length;
+
+      expect(firstCalls).toBe(4); // one per entity
+      expect(secondCalls).toBe(4); // cached path should skip new fetches
+      expect(renderer['chartDataCache']).toBeDefined();
     });
   });
 
