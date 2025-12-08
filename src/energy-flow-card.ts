@@ -120,27 +120,28 @@ class EnergyFlowCard extends HTMLElement {
       return;
     }
     if (viewMode === 'chart') {
-      // Initialize ChartRenderer if needed
+      const chartConfig = {
+        production_entity: this._config.production?.entity || '',
+        grid_entity: this._config.grid?.entity || '',
+        load_entity: this._config.load.entity,
+        battery_entity: this._config.battery?.entity || '',
+        invert_battery_data: this._config.battery?.invert?.data,
+        production_icon: this._config.production?.icon,
+        grid_icon: this._config.grid?.icon,
+        load_icon: this._config.load.icon,
+        battery_icon: this._config.battery?.icon,
+        production_tap_action: this._config.production?.tap,
+        grid_tap_action: this._config.grid?.tap,
+        load_tap_action: this._config.load.tap,
+        battery_tap_action: this._config.battery?.tap
+      } as const;
+
       if (!this._chartRenderer) {
-        const chartConfig = {
-          production_entity: this._config.production?.entity || '',
-          grid_entity: this._config.grid?.entity || '',
-          load_entity: this._config.load.entity,
-          battery_entity: this._config.battery?.entity || '',
-          invert_battery_data: this._config.battery?.invert?.data,
-          production_icon: this._config.production?.icon,
-          grid_icon: this._config.grid?.icon,
-          load_icon: this._config.load.icon,
-          battery_icon: this._config.battery?.icon,
-          production_tap_action: this._config.production?.tap,
-          grid_tap_action: this._config.grid?.tap,
-          load_tap_action: this._config.load.tap,
-          battery_tap_action: this._config.battery?.tap
-        };
         this._chartRenderer = new ChartRenderer(this._hass, chartConfig, this._fireEvent.bind(this));
+      } else {
+        this._chartRenderer.setConfig(chartConfig);
       }
       
-      // Update live values and render
       this._chartRenderer.updateLiveValues({ grid, load, production, battery });
       this._chartRenderer.render(this);
       this._lastViewMode = viewMode;
@@ -157,6 +158,8 @@ class EnergyFlowCard extends HTMLElement {
         (type, fallback) => getIcon(this._config!, this._hass, type, fallback),
         this._fireEvent.bind(this)
       );
+    } else {
+      this._defaultRenderer.setConfig(this._config);
     }
     
     // Calculate flows and render
@@ -208,6 +211,7 @@ class EnergyFlowCard extends HTMLElement {
         (action, entity) => handleAction(this._hass as HomeAssistant, this._fireEvent.bind(this), action, entity)
       );
     } else {
+      this._compactRenderer.setConfig(this._config);
       this._compactRenderer.setViewMode(viewMode);
     }
 

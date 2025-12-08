@@ -65,6 +65,10 @@ export class ChartRenderer {
     this.fireEvent = fireEvent;
   }
 
+  setConfig(config: ChartConfig): void {
+    this.config = config;
+  }
+
   /**
    * Update live chart values for indicators
    */
@@ -387,6 +391,8 @@ export class ChartRenderer {
         if (this.config.invert_battery_data) {
           battery = -battery;
         }
+
+        // Visual inversion only (does not affect calculations elsewhere)
 
         rawDataPoints.push({
           time,
@@ -714,7 +720,9 @@ export class ChartRenderer {
     // Use live values or last historical point
     let currentValues;
     if (this.liveChartValues) {
-      const { grid, load, production, battery } = this.liveChartValues;
+        const { grid, load, production } = this.liveChartValues;
+        const batteryRaw = this.liveChartValues.battery;
+        const battery = batteryRaw;
       currentValues = {
         load: Math.max(0, load),
         solar: Math.max(0, production),

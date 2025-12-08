@@ -4,7 +4,8 @@ import { resolve } from 'path';
 // Toggle debug build with CLI flag: `vite build --debug-build`
 const debugBuild = process.argv.includes('--debug-build');
 const shouldMinify = !debugBuild;
-const enableSourceMap = true; // Always emit source maps; keeps bundle debuggable after copying to HA
+// Default builds skip source maps; enable with --debug-build when you need them.
+const enableSourceMap = debugBuild;
 
 export default defineConfig({
   build: {

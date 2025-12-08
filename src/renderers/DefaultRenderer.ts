@@ -83,6 +83,13 @@ export class DefaultRenderer {
   }
 
   /**
+   * Update config reference when the card config changes
+   */
+  setConfig(config: EnergyFlowCardConfig): void {
+    this.config = config;
+  }
+
+  /**
    * Render the default view
    */
   render(data: DefaultRenderData): void {

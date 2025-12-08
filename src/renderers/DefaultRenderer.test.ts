@@ -251,6 +251,21 @@ describe('DefaultRenderer', () => {
       expect(svg).toBeTruthy();
     });
 
+    it('should update battery invert view when config changes', async () => {
+      renderer.render(renderData);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const batteryMeterInitial = (renderer as any).meters.get('battery');
+      expect(batteryMeterInitial?.invertView).toBe(false);
+
+      config.battery!.invert = { view: true };
+      renderer.setConfig(config);
+      renderer.render(renderData);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const batteryMeterUpdated = (renderer as any).meters.get('battery');
+      expect(batteryMeterUpdated?.invertView).toBe(true);
+    });
+
     it('should handle battery showPlus config', () => {
       config.battery!.showPlus = true;
       

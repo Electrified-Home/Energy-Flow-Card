@@ -59,6 +59,10 @@ export class CompactRenderer {
     this.handleActionCallback = handleActionCallback;
   }
 
+  setConfig(config: EnergyFlowCardConfig): void {
+    this.config = config;
+  }
+
   /**
    * Render or update the compact view
    */
