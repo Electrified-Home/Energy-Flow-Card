@@ -1,4 +1,5 @@
 import { createGridLines, createTimeLabels, createYAxisLabels, createAreaPath, createLoadLine } from '../chart/chart-utils';
+import { StreamingPlot } from '../chart/StreamingPlot';
 import { handleAction } from '../utils/helpers';
 import type { EnergyFlowCardConfig, EntityConfig } from '../types/Config.d.ts';
 
@@ -43,6 +44,20 @@ export class ChartRenderer {
   private indicatorUpdateTimeout?: number;
   private lastIndicatorUpdate = 0;
   private liveChartValues?: LiveChartValues;
+  private containerRef?: HTMLElement;
+  private visibilityHandler?: () => void;
+  private readonly fetchDeferMs = 16;
+  private readonly cacheMaxAgeMs = 5 * 60 * 1000;
+  private readonly refreshIntervalMs = 60 * 1000;
+  private streamingSupplyPlots?: { solar: StreamingPlot; batteryDischarge: StreamingPlot; gridImport: StreamingPlot };
+  private streamingDemandPlots?: { batteryCharge: StreamingPlot; gridExport: StreamingPlot };
+  private streamingLoadPlot?: StreamingPlot;
+  private streamingMeta?: { expectedPoints: number; supplyScale: number; demandScale: number; zeroLineY: number; chartWidth: number };
+  private streamingQueue: DataPoint[] = []; // Queue of points to render
+  private streamingActive = false;
+  private streamingSvg?: Element;
+  private streamingHoursToShow = 12;
+  private streamingFrameId?: number;
 
   private getEntityId(entityConfig?: EntityConfig): string {
     return entityConfig?.entity || '';
@@ -50,6 +65,46 @@ export class ChartRenderer {
 
   private getTapAction(entityConfig?: EntityConfig): any {
     return entityConfig?.tap;
+  }
+
+  private ensureVisibilityListener(): void {
+    if (this.visibilityHandler) return;
+
+    this.visibilityHandler = () => {
+      if (!this.isVisible()) return;
+      const svg = this.containerRef?.querySelector('.chart-svg');
+      if (svg && this.shouldRefresh()) {
+        this.scheduleDataFetch(svg, 12, 'visibility', true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', this.visibilityHandler);
+  }
+
+  private isVisible(): boolean {
+    if (!this.containerRef) return false;
+    if (document.hidden) return false;
+    if (!this.containerRef.isConnected) return false;
+    return this.containerRef.offsetParent !== null;
+  }
+
+  private shouldRefresh(): boolean {
+    if (this.chartRenderPending) return false;
+    if (!this.isVisible()) return false;
+    if (!this.chartDataCache) return true;
+
+    const age = Date.now() - this.chartDataCache.timestamp;
+    return age > this.refreshIntervalMs;
+  }
+
+  private scheduleDataFetch(svg: Element, hoursToShow: number, _reason: string, forceFetch = false): void {
+    if (this.chartRenderPending) return;
+    if (forceFetch) {
+      this.chartDataCache = undefined;
+      this.streamingMeta = undefined;
+    }
+    this.chartRenderPending = true;
+    setTimeout(() => this.fetchAndRenderChart(svg, hoursToShow), this.fetchDeferMs);
   }
 
   constructor(hass: any, config: EnergyFlowCardConfig, fireEvent: (type: string, detail?: any) => void) {
@@ -73,12 +128,23 @@ export class ChartRenderer {
    * Render chart view (main entry point)
    */
   render(container: HTMLElement): void {
+    this.containerRef = container;
+    this.ensureVisibilityListener();
+
     // Initialize chart structure if needed
     if (!container.querySelector('.chart-view')) {
       this.initializeChartStructure(container);
-    } else if (this.liveChartValues) {
-      // Update live values for indicators
-      this.throttledUpdateChartIndicators(container);
+    } else {
+      if (this.liveChartValues) {
+        // Update live values for indicators
+        this.throttledUpdateChartIndicators(container);
+      }
+
+      // Refresh data when view is visible and cache is stale
+      const svg = container.querySelector('.chart-svg');
+      if (svg && this.shouldRefresh()) {
+        this.scheduleDataFetch(svg, 12, 'stale', true);
+      }
     }
   }
 
@@ -119,18 +185,9 @@ export class ChartRenderer {
             width: 100%;
             height: 100%;
           }
-          .loading-message {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: rgb(160, 160, 160);
-            font-size: 14px;
-          }
         </style>
         <div class="chart-view">
           <div class="chart-container">
-            <div class="loading-message">Loading history data...</div>
             <svg class="chart-svg" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet">
               <!-- Chart will be rendered here -->
             </svg>
@@ -142,9 +199,8 @@ export class ChartRenderer {
     // Fetch and render chart data
     const svg = container.querySelector('.chart-svg');
     if (svg) {
-      setTimeout(() => {
-        this.fetchAndRenderChart(svg, 12);
-      }, 100);
+      this.renderBaseFrame(svg, 12);
+      this.scheduleDataFetch(svg, 12, 'initial');
     }
   }
 
@@ -184,16 +240,21 @@ export class ChartRenderer {
       clearTimeout(this.indicatorUpdateTimeout);
       this.indicatorUpdateTimeout = undefined;
     }
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = undefined;
+    }
+    if (this.streamingFrameId) {
+      cancelAnimationFrame(this.streamingFrameId);
+      this.streamingFrameId = undefined;
+    }
+    this.streamingActive = false;
     this.chartDataCache = undefined;
   }
 
-  /** Hide the loading overlay once data is ready or on error */
-  private hideLoading(svgElement: Element): void {
-    const container = svgElement.parentElement;
-    const loading = container?.querySelector('.loading-message') as HTMLElement | null;
-    if (loading) {
-      loading.style.display = 'none';
-    }
+  /** Hide the loading overlay once data is ready or on error - REMOVED */
+  private hideLoading(_svgElement: Element): void {
+    // Loading message removed
   }
 
   /**
@@ -215,49 +276,34 @@ export class ChartRenderer {
    * Fetch and render chart, using cache if available
    */
   async fetchAndRenderChart(svgElement: Element, hoursToShow = 12): Promise<void> {
-    if (this.chartRenderPending) return;
+    if (!this.chartRenderPending) {
+      this.chartRenderPending = true;
+    }
 
     const now = Date.now();
     const cacheAge = this.chartDataCache ? now - this.chartDataCache.timestamp : Infinity;
-    const cacheMaxAge = 5 * 60 * 1000; // 5 minutes
 
     // Clear expired cache
-    if (this.chartDataCache && cacheAge >= cacheMaxAge) {
+    if (this.chartDataCache && cacheAge >= this.cacheMaxAgeMs) {
       this.chartDataCache = undefined;
     }
 
     // Use cached data if fresh
-    if (this.chartDataCache && cacheAge < cacheMaxAge) {
+    if (this.chartDataCache && cacheAge < this.cacheMaxAgeMs) {
       requestAnimationFrame(() => {
-        this.renderChartFromCache(svgElement);
+        this.renderChartFromCache(svgElement, hoursToShow);
       });
+      this.chartRenderPending = false;
       return;
     }
 
-    this.chartRenderPending = true;
     const end = new Date();
     const start = new Date(end.getTime() - hoursToShow * 60 * 60 * 1000);
 
     try {
-      // Fetch history for all entities in parallel
-      const [productionHistory, gridHistory, loadHistory, batteryHistory] = await Promise.all([
-        this.fetchHistory(this.getEntityId(this.config.production), start, end),
-        this.fetchHistory(this.getEntityId(this.config.grid), start, end),
-        this.fetchHistory(this.getEntityId(this.config.load), start, end),
-        this.fetchHistory(this.getEntityId(this.config.battery), start, end),
-      ]);
+      const [productionHistory, gridHistory, loadHistory, batteryHistory] = await this.fetchHistoriesProgressively(start, end);
 
-      // Process chart
-      const processChart = () => {
-        this.drawStackedAreaChart(svgElement, productionHistory, gridHistory, loadHistory, batteryHistory, hoursToShow);
-        this.chartRenderPending = false;
-      };
-
-      if ('requestIdleCallback' in window) {
-        (window as any).requestIdleCallback(processChart, { timeout: 2000 });
-      } else {
-        setTimeout(processChart, 0);
-      }
+      await this.drawStackedAreaChart(svgElement, productionHistory, gridHistory, loadHistory, batteryHistory, hoursToShow);
     } catch (error) {
       console.error('Error fetching chart data:', error);
       this.chartRenderPending = false;
@@ -281,10 +327,167 @@ export class ChartRenderer {
     return response && response.length > 0 ? response[0] : [];
   }
 
+  private async fetchHistoriesProgressively(start: Date, end: Date): Promise<[
+    Array<{ state: string; last_changed: string }>,
+    Array<{ state: string; last_changed: string }>,
+    Array<{ state: string; last_changed: string }>,
+    Array<{ state: string; last_changed: string }>
+  ]> {
+    const entities = [
+      this.getEntityId(this.config.production),
+      this.getEntityId(this.config.grid),
+      this.getEntityId(this.config.load),
+      this.getEntityId(this.config.battery),
+    ];
+
+    const histories: Array<Array<{ state: string; last_changed: string }>> = [];
+
+    for (const entityId of entities) {
+      histories.push(await this.fetchHistory(entityId, start, end));
+      await new Promise(resolve => setTimeout(resolve, this.fetchDeferMs));
+    }
+
+    return histories as [
+      Array<{ state: string; last_changed: string }>,
+      Array<{ state: string; last_changed: string }>,
+      Array<{ state: string; last_changed: string }>,
+      Array<{ state: string; last_changed: string }>
+    ];
+  }
+
+  private renderBaseFrame(svgElement: Element, hoursToShow: number): void {
+    const width = 800;
+    const height = 400;
+    const margin = { top: 20, right: 150, bottom: 40, left: 60 };
+    const chartWidth = width - margin.left - margin.right;
+    const chartHeight = height - margin.top - margin.bottom;
+    const supplyHeight = chartHeight * 0.5;
+    const zeroLineY = margin.top + supplyHeight;
+
+    const baseContent = `
+      <g opacity="0.1">
+        ${createGridLines(chartWidth, chartHeight, margin)}
+      </g>
+      <line x1="${margin.left}" y1="${zeroLineY}" x2="${margin.left + chartWidth}" y2="${zeroLineY}" stroke="rgb(160, 160, 160)" stroke-width="1" stroke-dasharray="4,4" />
+    `;
+
+    svgElement.innerHTML = `
+      <g id="chart-base"></g>
+      <g id="chart-content">
+        <g id="chart-demand"></g>
+        <g id="chart-supply"></g>
+        <g id="chart-load"></g>
+      </g>
+      <g id="chart-icons"></g>
+    `;
+
+    const baseGroup = svgElement.querySelector('#chart-base');
+    if (baseGroup) {
+      baseGroup.innerHTML = baseContent;
+    }
+
+    // Initialize streaming plots early so they exist before data arrives
+    this.ensureStreamingPlots(svgElement);
+    
+    // Pre-initialize with expected geometry so plots are ready to grow
+    const expectedPoints = hoursToShow * 12;
+    if (this.streamingSupplyPlots && this.streamingDemandPlots && this.streamingLoadPlot) {
+      const xOffset = margin.left;
+      this.streamingSupplyPlots.solar.reset(expectedPoints, chartWidth, zeroLineY, 1, xOffset);
+      this.streamingSupplyPlots.batteryDischarge.reset(expectedPoints, chartWidth, zeroLineY, 1, xOffset);
+      this.streamingSupplyPlots.gridImport.reset(expectedPoints, chartWidth, zeroLineY, 1, xOffset);
+      this.streamingDemandPlots.batteryCharge.reset(expectedPoints, chartWidth, zeroLineY, 1, xOffset);
+      this.streamingDemandPlots.gridExport.reset(expectedPoints, chartWidth, zeroLineY, 1, xOffset);
+      this.streamingLoadPlot.reset(expectedPoints, chartWidth, zeroLineY, 1, xOffset);
+    }
+  }
+
+  private renderChartLayers(
+    svgElement: Element,
+    layers: { baseContent: string; demandPaths: string | null; supplyPaths: string | null; loadLine: string | null },
+    dataPoints: DataPoint[],
+    chartWidth: number,
+    margin: { top: number; right: number; bottom: number; left: number },
+    supplyHeight: number,
+    demandHeight: number,
+    supplyScale: number,
+    demandScale: number,
+    zeroLineY: number,
+    includeIcons = true
+  ): void {
+    const ensureGroup = (id: string) => {
+      let group = svgElement.querySelector(`#${id}`);
+      if (!group) {
+        group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('id', id);
+        svgElement.appendChild(group);
+      }
+      return group as Element;
+    };
+
+    const baseGroup = ensureGroup('chart-base');
+    const demandGroup = ensureGroup('chart-demand');
+    const supplyGroup = ensureGroup('chart-supply');
+    const iconsGroup = ensureGroup('chart-icons');
+    const loadGroup = ensureGroup('chart-load');
+
+    baseGroup.innerHTML = layers.baseContent;
+
+    requestAnimationFrame(() => {
+      if (layers.demandPaths !== null) demandGroup.innerHTML = layers.demandPaths;
+      if (layers.supplyPaths !== null) supplyGroup.innerHTML = layers.supplyPaths;
+      iconsGroup.innerHTML = includeIcons ? this.createChartIconSources() : '';
+
+      requestAnimationFrame(() => {
+        if (includeIcons) {
+          this.updateChartIndicators(svgElement);
+          this.attachChartAreaClickHandlers(svgElement);
+        }
+        if (layers.loadLine !== null) {
+          this.addLoadLineOnTop(loadGroup, layers.loadLine);
+        }
+        this.hideLoading(svgElement);
+
+        if (includeIcons) {
+          requestAnimationFrame(() => {
+            this.extractChartIcons(svgElement, dataPoints, chartWidth, supplyHeight, demandHeight, supplyScale, demandScale, margin, zeroLineY);
+          });
+        }
+      });
+    });
+  }
+
+  private ensureStreamingPlots(svgElement: Element): void {
+    const supplyGroup = svgElement.querySelector('#chart-supply');
+    const demandGroup = svgElement.querySelector('#chart-demand');
+    const loadGroup = svgElement.querySelector('#chart-load');
+    if (!supplyGroup || !demandGroup || !loadGroup) return;
+
+    // Clear existing paths if plots already exist (on reload/remount)
+    if (this.streamingSupplyPlots) {
+      // Plots exist, no need to recreate
+      return;
+    }
+
+    // Create plots once - they'll be added to DOM immediately and start empty
+    this.streamingSupplyPlots = {
+      solar: new StreamingPlot(supplyGroup, { mode: 'area', direction: 'down', fill: '#388e3c', opacity: 0.85, id: 'chart-area-solar' }),
+      batteryDischarge: new StreamingPlot(supplyGroup, { mode: 'area', direction: 'down', fill: '#1976d2', opacity: 0.8, id: 'chart-area-battery-discharge' }),
+      gridImport: new StreamingPlot(supplyGroup, { mode: 'area', direction: 'down', fill: '#c62828', opacity: 0.8, id: 'chart-area-grid-import' }),
+    };
+
+    this.streamingDemandPlots = {
+      batteryCharge: new StreamingPlot(demandGroup, { mode: 'area', direction: 'up', fill: '#1976d2', opacity: 0.8, id: 'chart-area-battery-charge' }),
+      gridExport: new StreamingPlot(demandGroup, { mode: 'area', direction: 'up', fill: '#f9a825', opacity: 0.8, id: 'chart-area-grid-export' }),
+    };
+
+    this.streamingLoadPlot = new StreamingPlot(loadGroup, { mode: 'line', direction: 'down', stroke: '#CCCCCC', strokeWidth: 3, opacity: 0.9, id: 'load-line' });
+  }
+
   /**
    * Render chart from cached data
    */
-  renderChartFromCache(svgElement: Element): void {
+  renderChartFromCache(svgElement: Element, hoursToShow: number): void {
     if (!this.chartDataCache) return;
 
     const dataPoints = this.chartDataCache.dataPoints;
@@ -310,26 +513,40 @@ export class ChartRenderer {
     const zeroLineY = margin.top + supplyHeight;
 
     // Render chart paths
-    const supplyPaths = this.createStackedPaths(dataPoints, chartWidth, supplyHeight, supplyScale, margin, 'supply', zeroLineY);
-    const demandPaths = this.createStackedPaths(dataPoints, chartWidth, demandHeight, demandScale, margin, 'demand', zeroLineY);
+    const expectedPoints = Math.max(dataPoints.length, hoursToShow * 12);
+    const supplyPaths = this.createStackedPaths(dataPoints, chartWidth, supplyHeight, supplyScale, margin, 'supply', zeroLineY, expectedPoints);
+    const demandPaths = this.createStackedPaths(dataPoints, chartWidth, demandHeight, demandScale, margin, 'demand', zeroLineY, expectedPoints);
     const loadLine = createLoadLine(dataPoints, chartWidth, supplyHeight, supplyScale, margin, zeroLineY);
 
-    const chartContent = `
+    const baseContent = `
       <g opacity="0.1">
         ${createGridLines(chartWidth, chartHeight, margin)}
       </g>
       <line x1="${margin.left}" y1="${zeroLineY}" x2="${margin.left + chartWidth}" y2="${zeroLineY}" stroke="rgb(160, 160, 160)" stroke-width="1" stroke-dasharray="4,4" />
-      ${demandPaths}
-      ${supplyPaths}
-      ${createTimeLabels(chartWidth, chartHeight, margin, 12)}
+      ${createTimeLabels(chartWidth, chartHeight, margin, hoursToShow)}
       ${createYAxisLabels(supplyHeight, demandHeight, margin, maxSupply, maxDemand, zeroLineY)}
     `;
 
-    svgElement.innerHTML = chartContent;
-    
-    this.updateChartIndicators(svgElement);
-    this.addLoadLineOnTop(svgElement, loadLine);
-    this.hideLoading(svgElement);
+    this.renderChartLayers(
+      svgElement,
+      {
+        baseContent,
+        demandPaths,
+        supplyPaths,
+        loadLine,
+      },
+      dataPoints,
+      chartWidth,
+      margin,
+      supplyHeight,
+      demandHeight,
+      supplyScale,
+      demandScale,
+      zeroLineY,
+      true
+    );
+
+    this.chartRenderPending = false;
   }
 
   /**
@@ -343,11 +560,7 @@ export class ChartRenderer {
     batteryHistory: Array<{ state: string; last_changed: string }>,
     hoursToShow: number
   ): Promise<void> {
-    const width = 800;
-    const height = 400;
-    const margin = { top: 20, right: 150, bottom: 40, left: 60 };
-    const chartWidth = width - margin.left - margin.right;
-    const chartHeight = height - margin.top - margin.bottom;
+    this.streamingMeta = undefined;
 
     // Collect 30-second raw data, then average into 5-minute visible ticks
     const rawPointsPerHour = 120;
@@ -362,7 +575,17 @@ export class ChartRenderer {
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), endMinutes, 0, 0);
     const start = new Date(end.getTime() - hoursToShow * 60 * 60 * 1000);
 
-    // Process data in chunks
+    // Initialize streaming immediately
+    this.streamingQueue = [];
+    this.streamingSvg = svgElement;
+    this.streamingHoursToShow = hoursToShow;
+
+    // Start the streaming renderer right away (even with empty queue)
+    if (!this.streamingActive) {
+      this.startStreamingRenderer();
+    }
+
+    // Process data in chunks and queue as we go
     const chunkSize = 240;
     const rawDataPoints: DataPoint[] = [];
 
@@ -385,8 +608,6 @@ export class ChartRenderer {
           battery = -battery;
         }
 
-        // Visual inversion only (does not affect calculations elsewhere)
-
         rawDataPoints.push({
           time,
           solar: Math.max(0, production),
@@ -397,98 +618,82 @@ export class ChartRenderer {
           load: Math.max(0, load),
         });
       }
+
+      // After each chunk of raw data, convert completed 5-minute windows to visible points
+      const firstCompleteVisibleIdx = Math.floor((chunkStart - 1) / rawPointsPerVisibleTick);
+      const lastCompleteVisibleIdx = Math.floor((chunkEnd - 1) / rawPointsPerVisibleTick);
+
+      for (let i = Math.max(0, firstCompleteVisibleIdx); i <= lastCompleteVisibleIdx; i++) {
+        const startIdx = i * rawPointsPerVisibleTick;
+        const endIdx = Math.min(startIdx + rawPointsPerVisibleTick, rawDataPoints.length);
+        
+        // Only queue if we have a complete window
+        if (endIdx - startIdx === rawPointsPerVisibleTick) {
+          const visibleTime = new Date(start.getTime() + (i + 1) * 5 * 60 * 1000);
+          const windowSize = rawPointsPerVisibleTick;
+          
+          let solarSum = 0, batteryDischargeSum = 0, batteryChargeSum = 0;
+          let gridImportSum = 0, gridExportSum = 0, loadSum = 0;
+          
+          for (let j = startIdx; j < endIdx; j++) {
+            solarSum += rawDataPoints[j].solar;
+            batteryDischargeSum += rawDataPoints[j].batteryDischarge;
+            batteryChargeSum += rawDataPoints[j].batteryCharge;
+            gridImportSum += rawDataPoints[j].gridImport;
+            gridExportSum += rawDataPoints[j].gridExport;
+            loadSum += rawDataPoints[j].load;
+          }
+
+          // Check if we already queued this point
+          if (!this.streamingQueue.some(p => p.time.getTime() === visibleTime.getTime())) {
+            this.streamingQueue.push({
+              time: visibleTime,
+              solar: solarSum / windowSize,
+              batteryDischarge: batteryDischargeSum / windowSize,
+              batteryCharge: batteryChargeSum / windowSize,
+              gridImport: gridImportSum / windowSize,
+              gridExport: gridExportSum / windowSize,
+              load: loadSum / windowSize,
+            });
+          }
+        }
+      }
     }
 
-    // Average into 5-minute points
-    const dataPoints: DataPoint[] = [];
-
-    for (let i = 0; i < totalVisiblePoints; i++) {
+    // Queue any remaining incomplete windows at the end
+    const lastCompleteIdx = Math.floor((rawDataPoints.length - 1) / rawPointsPerVisibleTick);
+    for (let i = lastCompleteIdx + 1; i < totalVisiblePoints; i++) {
       const visibleTime = new Date(start.getTime() + (i + 1) * 5 * 60 * 1000);
       const startIdx = i * rawPointsPerVisibleTick;
       const endIdx = Math.min(startIdx + rawPointsPerVisibleTick, rawDataPoints.length);
       const windowSize = endIdx - startIdx;
       
-      let solarSum = 0, batteryDischargeSum = 0, batteryChargeSum = 0;
-      let gridImportSum = 0, gridExportSum = 0, loadSum = 0;
-      
-      for (let j = startIdx; j < endIdx; j++) {
-        solarSum += rawDataPoints[j].solar;
-        batteryDischargeSum += rawDataPoints[j].batteryDischarge;
-        batteryChargeSum += rawDataPoints[j].batteryCharge;
-        gridImportSum += rawDataPoints[j].gridImport;
-        gridExportSum += rawDataPoints[j].gridExport;
-        loadSum += rawDataPoints[j].load;
-      }
+      if (windowSize > 0) {
+        let solarSum = 0, batteryDischargeSum = 0, batteryChargeSum = 0;
+        let gridImportSum = 0, gridExportSum = 0, loadSum = 0;
+        
+        for (let j = startIdx; j < endIdx; j++) {
+          solarSum += rawDataPoints[j].solar;
+          batteryDischargeSum += rawDataPoints[j].batteryDischarge;
+          batteryChargeSum += rawDataPoints[j].batteryCharge;
+          gridImportSum += rawDataPoints[j].gridImport;
+          gridExportSum += rawDataPoints[j].gridExport;
+          loadSum += rawDataPoints[j].load;
+        }
 
-      dataPoints.push({
-        time: visibleTime,
-        solar: solarSum / windowSize,
-        batteryDischarge: batteryDischargeSum / windowSize,
-        batteryCharge: batteryChargeSum / windowSize,
-        gridImport: gridImportSum / windowSize,
-        gridExport: gridExportSum / windowSize,
-        load: loadSum / windowSize,
-      });
-    }
-
-    // Cache processed data
-    this.chartDataCache = {
-      timestamp: Date.now(),
-      dataPoints
-    };
-
-    // Calculate scaling
-    const maxSupply = Math.max(...dataPoints.map(d => d.solar + d.batteryDischarge + d.gridImport), ...dataPoints.map(d => d.load));
-    const maxDemand = Math.max(...dataPoints.map(d => d.batteryCharge + d.gridExport));
-    
-    const totalRange = maxSupply + maxDemand;
-    const supplyRatio = totalRange > 0 ? maxSupply / totalRange : 0.5;
-    const demandRatio = totalRange > 0 ? maxDemand / totalRange : 0.5;
-    
-    const supplyScale = maxSupply > 0 ? (chartHeight * supplyRatio) / (maxSupply * 1.1) : 1;
-    const demandScale = maxDemand > 0 ? (chartHeight * demandRatio) / (maxDemand * 1.1) : 1;
-    const scale = Math.min(supplyScale, demandScale);
-    
-    const supplyHeight = maxSupply * scale * 1.1;
-    const demandHeight = maxDemand * scale * 1.1;
-    const zeroLineY = margin.top + supplyHeight;
-
-    // Create paths
-    const supplyPaths = this.createStackedPaths(dataPoints, chartWidth, supplyHeight, scale, margin, 'supply', zeroLineY);
-    const demandPaths = this.createStackedPaths(dataPoints, chartWidth, demandHeight, scale, margin, 'demand', zeroLineY);
-    const loadLine = createLoadLine(dataPoints, chartWidth, supplyHeight, scale, margin, zeroLineY);
-
-    // Build SVG content
-    const svgContent = `
-      <g opacity="0.1">
-        ${createGridLines(chartWidth, chartHeight, margin)}
-      </g>
-      <line x1="${margin.left}" y1="${zeroLineY}" x2="${margin.left + chartWidth}" y2="${zeroLineY}" stroke="rgb(160, 160, 160)" stroke-width="1" stroke-dasharray="4,4" />
-      ${demandPaths}
-      ${supplyPaths}
-      ${createTimeLabels(chartWidth, chartHeight, margin, hoursToShow)}
-      ${createYAxisLabels(supplyHeight, demandHeight, margin, maxSupply, maxDemand, zeroLineY)}
-      ${this.createChartIconSources()}
-    `;
-
-    svgElement.innerHTML = svgContent;
-    this.hideLoading(svgElement);
-    
-    // Add click handlers
-    this.attachChartAreaClickHandlers(svgElement);
-    
-    // Progressive rendering
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          this.extractChartIcons(svgElement, dataPoints, chartWidth, supplyHeight, demandHeight, scale, scale, margin, zeroLineY);
-          
-          requestAnimationFrame(() => {
-            this.addLoadLineOnTop(svgElement, loadLine);
+        if (!this.streamingQueue.some(p => p.time.getTime() === visibleTime.getTime())) {
+          this.streamingQueue.push({
+            time: visibleTime,
+            solar: solarSum / windowSize,
+            batteryDischarge: batteryDischargeSum / windowSize,
+            batteryCharge: batteryChargeSum / windowSize,
+            gridImport: gridImportSum / windowSize,
+            gridExport: gridExportSum / windowSize,
+            load: loadSum / windowSize,
           });
-        });
-      });
-    });
+        }
+      }
+    }
   }
 
   /**
@@ -521,10 +726,12 @@ export class ChartRenderer {
     yScale: number,
     margin: { top: number; right: number; bottom: number; left: number },
     type: 'supply' | 'demand',
-    zeroLineY: number
+    zeroLineY: number,
+    totalPointsOverride?: number
   ): string {
-    const totalPoints = dataPoints.length;
-    const xStep = chartWidth / (totalPoints - 1);
+    const totalPoints = totalPointsOverride ?? dataPoints.length;
+    const safePoints = Math.max(2, totalPoints);
+    const xStep = chartWidth / (safePoints - 1);
 
     if (type === 'supply') {
       const solarPath = createAreaPath(dataPoints, xStep, zeroLineY, yScale, margin, 
@@ -853,10 +1060,10 @@ export class ChartRenderer {
   /**
    * Add load line on top of chart
    */
-  private addLoadLineOnTop(svgElement: Element, loadLine: string): void {
+  private addLoadLineOnTop(loadGroup: Element, loadLine: string): void {
     if (!loadLine) return;
     
-    const existingLoadLine = svgElement.querySelector('#load-line');
+    const existingLoadLine = loadGroup.querySelector('#load-line');
     if (existingLoadLine) {
       existingLoadLine.remove();
     }
@@ -879,7 +1086,7 @@ export class ChartRenderer {
       handleAction(this.hass, this.fireEvent, this.getTapAction(this.config.load), this.getEntityId(this.config.load));
     });
     
-    svgElement.appendChild(path);
+    loadGroup.appendChild(path);
   }
 
   /**
@@ -923,9 +1130,163 @@ export class ChartRenderer {
   }
 
   /**
+   * Start streaming renderer that pulls ONE point from queue per frame
+   */
+  private startStreamingRenderer(): void {
+    if (this.streamingActive) return;
+    this.streamingActive = true;
+    
+    const streamDelay = Number((globalThis as any).__mockStreamStepDelayMs ?? 0) || 0;
+
+    if (this.streamingSvg) {
+      this.ensureStreamingPlots(this.streamingSvg);
+    }
+
+    const processOnePoint = () => {
+      if (!this.streamingActive || !this.streamingSvg) {
+        return;
+      }
+
+      const point = this.streamingQueue.shift();
+      
+      if (point) {
+        if (!this.streamingMeta) {
+          this.initializeStreamingMeta();
+        }
+        
+        if (this.streamingMeta && this.streamingSupplyPlots && this.streamingDemandPlots && this.streamingLoadPlot) {
+          this.streamingSupplyPlots.solar.addPoint(point.solar, 0);
+          this.streamingSupplyPlots.batteryDischarge.addPoint(point.batteryDischarge, point.solar);
+          this.streamingSupplyPlots.gridImport.addPoint(point.gridImport, point.solar + point.batteryDischarge);
+          
+          this.streamingDemandPlots.batteryCharge.addPoint(point.batteryCharge, 0);
+          this.streamingDemandPlots.gridExport.addPoint(point.gridExport, point.batteryCharge);
+          
+          this.streamingLoadPlot.addPoint(point.load, 0);
+        }
+      }
+
+      if (this.streamingQueue.length > 0) {
+        if (streamDelay > 0) {
+          setTimeout(() => {
+            this.streamingFrameId = requestAnimationFrame(processOnePoint);
+          }, streamDelay);
+        } else {
+          this.streamingFrameId = requestAnimationFrame(processOnePoint);
+        }
+      } else {
+        this.streamingActive = false;
+        if (this.streamingSvg) {
+          this.finalizeChart(this.streamingSvg, [], this.streamingHoursToShow);
+        }
+      }
+    };
+
+    this.streamingFrameId = requestAnimationFrame(processOnePoint);
+  }
+
+  /**
+   * Initialize streaming metadata from the queue (peek at all points for scaling)
+   */
+  private initializeStreamingMeta(): void {
+    if (!this.streamingSvg || !this.streamingSupplyPlots) return;
+    
+    const width = 800;
+    const height = 400;
+    const margin = { top: 20, right: 150, bottom: 40, left: 60 };
+    const chartWidth = width - margin.left - margin.right;
+    const chartHeight = height - margin.top - margin.bottom;
+    
+    // Peek at entire queue to calculate stable scales
+    let maxSupply = 1;
+    let maxDemand = 1;
+    
+    for (const pt of this.streamingQueue) {
+      const supply = pt.solar + pt.batteryDischarge + pt.gridImport;
+      const demand = pt.batteryCharge + pt.gridExport;
+      maxSupply = Math.max(maxSupply, supply, pt.load);
+      maxDemand = Math.max(maxDemand, demand);
+    }
+    
+    const totalRange = maxSupply + maxDemand;
+    const supplyRatio = totalRange > 0 ? maxSupply / totalRange : 0.5;
+    const demandRatio = totalRange > 0 ? maxDemand / totalRange : 0.5;
+    
+    const supplyHeight = chartHeight * supplyRatio;
+    const demandHeight = chartHeight * demandRatio;
+    const zeroLineY = margin.top + supplyHeight;
+    const supplyScale = maxSupply > 0 ? supplyHeight / (maxSupply * 1.1) : 1;
+    const demandScale = maxDemand > 0 ? demandHeight / (maxDemand * 1.1) : 1;
+    
+    this.streamingMeta = {
+      expectedPoints: this.streamingQueue.length,
+      supplyScale,
+      demandScale,
+      zeroLineY,
+      chartWidth,
+    };
+    
+    // Reset plots with correct geometry
+    const xOffset = margin.left;
+
+    this.streamingSupplyPlots.solar.reset(this.streamingMeta.expectedPoints, chartWidth, zeroLineY, supplyScale, xOffset);
+    this.streamingSupplyPlots.batteryDischarge.reset(this.streamingMeta.expectedPoints, chartWidth, zeroLineY, supplyScale, xOffset);
+    this.streamingSupplyPlots.gridImport.reset(this.streamingMeta.expectedPoints, chartWidth, zeroLineY, supplyScale, xOffset);
+    
+    this.streamingDemandPlots!.batteryCharge.reset(this.streamingMeta.expectedPoints, chartWidth, zeroLineY, demandScale, xOffset);
+    this.streamingDemandPlots!.gridExport.reset(this.streamingMeta.expectedPoints, chartWidth, zeroLineY, demandScale, xOffset);
+    
+    this.streamingLoadPlot!.reset(this.streamingMeta.expectedPoints, chartWidth, zeroLineY, supplyScale, xOffset);
+  }
+
+  /**
+   * Finalize chart with icons and full render
+   */
+  private async finalizeChart(svgElement: Element, _dataPoints: DataPoint[], hoursToShow: number): Promise<void> {
+    // Add labels now that streaming is complete and we know final scaling
+    if (this.streamingMeta) {
+      const width = 800;
+      const height = 400;
+      const margin = { top: 20, right: 150, bottom: 40, left: 60 };
+      const chartWidth = width - margin.left - margin.right;
+      const chartHeight = height - margin.top - margin.bottom;
+      const zeroLineY = this.streamingMeta.zeroLineY;
+      const supplyHeight = zeroLineY - margin.top;
+      const demandHeight = chartHeight - supplyHeight;
+      
+      // Use scales from streamingMeta to back-calculate max values
+      const maxSupply = supplyHeight / (this.streamingMeta.supplyScale * 1.1);
+      const maxDemand = demandHeight / (this.streamingMeta.demandScale * 1.1);
+      
+      const baseGroup = svgElement.querySelector('#chart-base');
+      if (baseGroup) {
+        const labelsContent = `
+          ${createTimeLabels(chartWidth, chartHeight, margin, hoursToShow)}
+          ${createYAxisLabels(supplyHeight, demandHeight, margin, maxSupply, maxDemand, zeroLineY)}
+        `;
+        baseGroup.insertAdjacentHTML('beforeend', labelsContent);
+      }
+    }
+
+    // Extract icons and update indicators
+    await this.extractChartIcons(svgElement, [], 0, 0, 0, 0, 0, { top: 0, right: 0, bottom: 0, left: 0 }, 0);
+    this.updateChartIndicators(svgElement);
+    this.attachChartAreaClickHandlers(svgElement);
+
+    this.chartRenderPending = false;
+  }
+
+  /**
    * Clear cache (e.g., when data becomes stale)
    */
   clearCache(): void {
+    if (this.streamingFrameId) {
+      cancelAnimationFrame(this.streamingFrameId);
+      this.streamingFrameId = undefined;
+    }
+    this.streamingActive = false;
+    this.streamingQueue = [];
     this.chartDataCache = undefined;
   }
 }
+
