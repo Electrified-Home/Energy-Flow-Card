@@ -4,7 +4,7 @@ import { resolve } from 'path';
 // Toggle debug build with CLI flag: `vite build --debug-build`
 const debugBuild = process.argv.includes('--debug-build');
 const shouldMinify = !debugBuild;
-const enableSourceMap = debugBuild;
+const enableSourceMap = true; // Always emit source maps; keeps bundle debuggable after copying to HA
 
 export default defineConfig({
   build: {
@@ -16,8 +16,8 @@ export default defineConfig({
       fileName: 'energy-flow-card',
       formats: ['iife']
     },
-    outDir: '.',
-    emptyOutDir: false,
+    outDir: 'dist',
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         extend: true,

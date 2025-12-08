@@ -55,7 +55,8 @@ export function handleAction(
   
   // Default to more-info if no action configured
   const config = actionConfig || { action: 'more-info' as const };
-  const action = config.action || 'more-info';
+  const rawAction = config.action || 'more-info';
+  const action = rawAction === 'default' ? 'more-info' : rawAction;
   
   switch (action) {
     case 'more-info':
@@ -69,6 +70,8 @@ export function handleAction(
       if (config.path) {
         history.pushState(null, '', config.path);
         fireEvent('location-changed', { replace: false });
+        // Also emit on window so HA router sees it even outside shadow roots
+        window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
       }
       break;
       
