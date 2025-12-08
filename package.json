@@ -8,7 +8,7 @@
     "build:debug": "pnpm typecheck && pnpm lint && vite build -- --debug-build",
     "dev": "vite",
     "preview": "vite preview",
-    "test": "pnpm build &&vitest run",
+    "test": "pnpm typecheck && pnpm lint && vitest run",
     "lint": "eslint . --ext .ts",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage"
