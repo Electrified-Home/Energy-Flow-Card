@@ -7,22 +7,42 @@ const shouldMinify = !debugBuild;
 // Default builds skip source maps; enable with --debug-build when you need them.
 const enableSourceMap = debugBuild;
 
+// Determine which card to build from environment variable
+const buildCard = process.env.BUILD_CARD || 'energy-flow-card';
+
+const entryMap: Record<string, { entry: string; name: string }> = {
+  'energy-flow-card': {
+    entry: resolve(__dirname, 'src/energy-flow-card.ts'),
+    name: 'EnergyFlowCard'
+  },
+  'compact-home-energy-flow-card': {
+    entry: resolve(__dirname, 'src/compact-home-energy-flow-card.ts'),
+    name: 'CompactHomeEnergyFlowCard'
+  },
+  'metered-home-energy-flow-card': {
+    entry: resolve(__dirname, 'src/metered-home-energy-flow-card.ts'),
+    name: 'MeteredHomeEnergyFlowCard'
+  }
+};
+
+const config = entryMap[buildCard];
+
 export default defineConfig({
   build: {
     minify: shouldMinify ? 'esbuild' : false,
     sourcemap: enableSourceMap,
     lib: {
-      entry: resolve(__dirname, 'src/energy-flow-card.ts'),
-      name: 'EnergyFlowCard',
-      fileName: 'energy-flow-card',
+      entry: config.entry,
+      name: config.name,
+      fileName: buildCard,
       formats: ['iife']
     },
     outDir: 'dist',
-    emptyOutDir: true,
+    emptyOutDir: false, // Don't empty so both builds can coexist
     rollupOptions: {
       output: {
         extend: true,
-        entryFileNames: 'energy-flow-card.js'
+        entryFileNames: `${buildCard}.js`
       }
     }
   },

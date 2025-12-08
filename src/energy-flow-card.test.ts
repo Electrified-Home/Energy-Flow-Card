@@ -72,23 +72,4 @@ describe('EnergyFlowCard element', () => {
 
     expect(() => card.setConfig({ load_entity: 'x' } as any)).not.toThrow();
   });
-
-  it('cleans up chart renderer when switching away', () => {
-    const el = document.createElement('energy-flow-card') as any;
-    el.setConfig({
-      mode: 'chart',
-      load: { entity: 'sensor.load' },
-      grid: { entity: 'sensor.grid' },
-      production: { entity: 'sensor.prod' },
-      battery: { entity: 'sensor.batt' },
-    });
-    el.hass = hass;
-    // Switch mode
-    el.setConfig({
-      mode: 'default',
-      load: { entity: 'sensor.load' },
-    });
-    el.hass = hass;
-    expect(true).toBe(true);
-  });
 });

@@ -6,17 +6,14 @@ import type { HomeAssistant } from './types/HASS.d.ts';
 import { CompactRenderer } from './renderers/CompactRenderer';
 import type { CompactViewMode } from './renderers/CompactRenderer';
 import { DefaultRenderer } from './renderers/DefaultRenderer';
-import { ChartRenderer } from './renderers/ChartRenderer';
 
 // Main card class
 class EnergyFlowCard extends HTMLElement {
   private _resizeObserver: ResizeObserver | null;
   private _config?: EnergyFlowCardConfig;
   private _hass?: HomeAssistant;
-  private _lastViewMode?: string;
   private _compactRenderer?: CompactRenderer;
   private _defaultRenderer?: DefaultRenderer;
-  private _chartRenderer?: ChartRenderer;
 
   constructor() {
     super();
@@ -55,9 +52,6 @@ class EnergyFlowCard extends HTMLElement {
     // Stop renderers
     if (this._defaultRenderer) {
       this._defaultRenderer.stop();
-    }
-    if (this._chartRenderer) {
-      this._chartRenderer.cleanup();
     }
   }
 
@@ -109,30 +103,12 @@ class EnergyFlowCard extends HTMLElement {
     // Check view mode
     const viewMode = this._config.mode || 'default';
     
-    // Clean up chart cache if switching away from chart view
-    if (this._lastViewMode === 'chart' && viewMode !== 'chart' && this._chartRenderer) {
-      this._chartRenderer.cleanup();
-    }
-    
     if (viewMode === 'compact' || viewMode === 'compact-battery') {
       this._renderCompactView(grid, load, production, battery, viewMode as CompactViewMode);
-      this._lastViewMode = viewMode;
-      return;
-    }
-    if (viewMode === 'chart') {
-      if (!this._chartRenderer) {
-        this._chartRenderer = new ChartRenderer(this._hass, this._config, this._fireEvent.bind(this));
-      } else {
-        this._chartRenderer.setConfig(this._config);
-      }
-      
-      this._chartRenderer.updateLiveValues({ grid, load, production, battery });
-      this._chartRenderer.render(this);
-      this._lastViewMode = viewMode;
       return;
     }
 
-    // Initialize DefaultRenderer if needed
+    // Initialize DefaultRenderer if needed (flow diagram mode)
     if (!this._defaultRenderer) {
       this._defaultRenderer = new DefaultRenderer(
         this,
@@ -149,8 +125,6 @@ class EnergyFlowCard extends HTMLElement {
     // Calculate flows and render
     const flows = this._calculateFlows(grid, production, load, battery);
     this._defaultRenderer.render({ grid, load, production, battery, flows });
-
-    this._lastViewMode = viewMode;
   }
 
   private _getEntityState(entityId: string | undefined) {
@@ -239,7 +213,10 @@ declare global {
 }
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "custom:energy-flow-card",
+  type: "energy-flow-card",
   name: "Energy Flow Card",
-  description: "A test energy-flow card."
+  description: "Visualize energy flows between solar, battery, grid and load"
 });
+
+// Dispatch event to notify Home Assistant
+window.dispatchEvent(new Event('ll-rebuild'));

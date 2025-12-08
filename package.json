@@ -4,7 +4,7 @@
   "description": "Home Assistant Energy Flow Card",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "pnpm typecheck && pnpm lint && vite build",
+    "build": "pnpm typecheck && pnpm lint && pwsh -File build-cards.ps1",
     "build:debug": "pnpm typecheck && pnpm lint && vite build -- --debug-build",
     "dev": "vite",
     "preview": "vite preview",
