@@ -210,12 +210,20 @@
       
       // Configure card for chart view
       card.setConfig({
-        view_mode: 'chart',
-        grid_entity: 'sensor.grid_power',
-        load_entity: 'sensor.house_load',
-        production_entity: 'sensor.solar_production',
-        battery_entity: 'sensor.battery_power',
-        battery_soc_entity: 'sensor.battery_soc'
+        mode: 'chart',
+        load: {
+          entity: 'sensor.house_load'
+        },
+        grid: {
+          entity: 'sensor.grid_power'
+        },
+        production: {
+          entity: 'sensor.solar_production'
+        },
+        battery: {
+          entity: 'sensor.battery_power',
+          soc_entity: 'sensor.battery_soc'
+        }
       });
     });
   </script>

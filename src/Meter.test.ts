@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { Meter } from './meter.js';
+import { Meter } from './Meter';
 
 describe('Meter', () => {
   describe('Constructor and Initialization', () => {
@@ -295,11 +295,11 @@ describe('Meter', () => {
   describe('Animation Control', () => {
     beforeEach(() => {
       vi.useFakeTimers();
-      global.requestAnimationFrame = vi.fn((cb) => {
+      window.requestAnimationFrame = vi.fn((cb) => {
         setTimeout(() => cb(Date.now()), 16);
         return 1;
       }) as unknown as typeof requestAnimationFrame;
-      global.cancelAnimationFrame = vi.fn();
+      window.cancelAnimationFrame = vi.fn();
     });
 
     test('should start animation', () => {

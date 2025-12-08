@@ -35,14 +35,15 @@
     "emitDecoratorMetadata": true,
     
     // Lib
-    "lib": ["ES2020", "DOM"]
+    "lib": ["ES2020", "DOM"],
+    
+    // Test globals
+    "types": ["vitest/globals"]
   },
   "include": [
     "src/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "**/*.spec.ts",
-    "**/*.test.ts"
+    "node_modules"
   ]
 }

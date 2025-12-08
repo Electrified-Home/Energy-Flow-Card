@@ -1,8 +1,15 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 
+// Toggle debug build with CLI flag: `vite build --debug-build`
+const debugBuild = process.argv.includes('--debug-build');
+const shouldMinify = !debugBuild;
+const enableSourceMap = debugBuild;
+
 export default defineConfig({
   build: {
+    minify: shouldMinify ? 'esbuild' : false,
+    sourcemap: enableSourceMap,
     lib: {
       entry: resolve(__dirname, 'src/energy-flow-card.ts'),
       name: 'EnergyFlowCard',

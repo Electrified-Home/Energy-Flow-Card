@@ -1,8 +1,830 @@
-(function(){"use strict";class U{constructor(t,e,i,n,o,a,r,h,s=!1,c=!1,d,g,l){this.id=t,this._value=e,this.min=i,this.max=n,this.bidirectional=o,this.label=a,this.icon=r,this.units=h,this._invertView=s,this.showPlus=c,this.tapAction=d,this.entityId=g,this.fireEventCallback=l,this.element=null,this.radius=50,this.boxWidth=120,this.boxHeight=135,this.boxRadius=16,this.centerX=this.boxWidth/2,this.centerY=this.radius+25,this.offsetX=-this.centerX,this.offsetY=-this.centerY,this.needleState={target:0,current:0,ghost:0},this._lastAnimationTime=null,this._animationFrameId=null,this._updateNeedleAngle()}get value(){return this._value}set value(t){if(this._value!==t&&(this._value=t,this._updateNeedleAngle(),this.element)){const e=this.element.querySelector(`#value-${this.id}`);e&&(e.textContent=this._formatValueText()),this.updateDimming()}}get invertView(){return this._invertView}set invertView(t){if(this._invertView!==t&&(this._invertView=t,this._updateNeedleAngle(),this.element)){const e=this.element.querySelector(`#value-${this.id}`);e&&(e.textContent=this._formatValueText())}}get displayValue(){return this._invertView?-this._value:this._value}_formatValueText(){const t=this.displayValue,e=t.toFixed(0);return t<0?e+" ":t>0&&this.showPlus?"+"+e+" ":e}_updateNeedleAngle(){let t,e;const i=this.displayValue;if(this.bidirectional){const n=this.max-this.min;t=Math.min(Math.max((i-this.min)/n,0),1),e=180-t*180}else t=Math.min(Math.max(i/this.max,0),1),e=180-t*180;this.needleState.target=e}updateDimming(){if(!this.element)return;const t=this.element.querySelector(`#dimmer-${this.id}`);if(t){const e=Math.abs(this.value)<.5;t.setAttribute("opacity",e?"0.3":"0")}}startAnimation(){if(this._animationFrameId)return;const t=e=>{this._lastAnimationTime||(this._lastAnimationTime=e);const i=e-this._lastAnimationTime;if(this._lastAnimationTime=e,!this.element){this._animationFrameId=null;return}const n=this.radius-5,o=Math.min(i/150,1);this.needleState.current+=(this.needleState.target-this.needleState.current)*o;const a=Math.min(i/400,1);this.needleState.ghost+=(this.needleState.current-this.needleState.ghost)*a;const r=10;this.needleState.ghost<this.needleState.current-r?this.needleState.ghost=this.needleState.current-r:this.needleState.ghost>this.needleState.current+r&&(this.needleState.ghost=this.needleState.current+r);const h=this.element.querySelector(`#needle-${this.id}`);if(h){const c=this.needleState.current*Math.PI/180,d=this.centerX+n*Math.cos(c),g=this.centerY-n*Math.sin(c);h.setAttribute("x2",String(d)),h.setAttribute("y2",String(g))}const s=this.element.querySelector(`#ghost-needle-${this.id}`);if(s){const c=this.needleState.ghost*Math.PI/180,d=this.centerX+n*Math.cos(c),g=this.centerY-n*Math.sin(c);s.setAttribute("x2",String(d)),s.setAttribute("y2",String(g))}this._animationFrameId=requestAnimationFrame(t)};this._animationFrameId=requestAnimationFrame(t)}stopAnimation(){this._animationFrameId&&(cancelAnimationFrame(this._animationFrameId),this._animationFrameId=null,this._lastAnimationTime=null)}_handleTapAction(){if(!this.fireEventCallback)return;const t=this.tapAction||{action:"more-info"};switch(t.action||"more-info"){case"more-info":const i=t.entity||this.entityId;i&&this.fireEventCallback("hass-more-info",{entityId:i});break;case"navigate":t.navigation_path&&(history.pushState(null,"",t.navigation_path),this.fireEventCallback("location-changed",{replace:t.navigation_replace||!1}));break;case"url":t.url_path&&window.open(t.url_path);break;case"toggle":this.entityId&&this.fireEventCallback("call-service",{domain:"homeassistant",service:"toggle",service_data:{entity_id:this.entityId}});break;case"perform-action":if(t.perform_action){const[n,o]=t.perform_action.split(".");this.fireEventCallback("call-service",{domain:n,service:o,service_data:t.data||{},target:t.target})}break;case"assist":this.fireEventCallback("show-dialog",{dialogTag:"ha-voice-command-dialog",dialogParams:{pipeline_id:t.pipeline_id||"last_used",start_listening:t.start_listening}});break}}createElement(){const t=this.displayValue;let e,i;if(this.bidirectional){const C=this.max-this.min;e=Math.min(Math.max((t-this.min)/C,0),1),i=180-e*180}else e=Math.min(Math.max(t/this.max,0),1),i=180-e*180;this.needleState.target=i,this.needleState.current=i,this.needleState.ghost=i;const o=(this.bidirectional?[this.min,0,this.max]:[0,this.max/2,this.max]).map(C=>{const M=(180-(this.bidirectional?(C-this.min)/(this.max-this.min):C/this.max)*180)*Math.PI/180,F=this.radius,L=this.radius-8,f=this.centerX+F*Math.cos(M),T=this.centerY-F*Math.sin(M),Y=this.centerX+L*Math.cos(M),_=this.centerY-L*Math.sin(M);return`<line x1="${f}" y1="${T}" x2="${Y}" y2="${_}" stroke="rgb(160, 160, 160)" stroke-width="2" />`}).join(""),h=(180-(this.bidirectional?(0-this.min)/(this.max-this.min):0)*180)*Math.PI/180,s=this.centerX,c=this.centerY,d=this.centerX+this.radius*Math.cos(h),g=this.centerY-this.radius*Math.sin(h),l=`<line x1="${s}" y1="${c}" x2="${d}" y2="${g}" stroke="rgb(100, 100, 100)" stroke-width="2" />`,b=i*Math.PI/180,x=this.radius-5,u=this.centerX+x*Math.cos(b),m=this.centerY-x*Math.sin(b),w=this.centerY+5,S=this.centerY+this.radius*.5,E=this.centerY+this.radius*.7,$=`
+(function() {
+  "use strict";
+  function calculateEnergyFlows(sensors) {
+    const productionFlow = Math.max(0, sensors.production);
+    const gridFlow = sensors.grid;
+    const batteryFlow = sensors.battery;
+    const loadDemand = Math.max(0, sensors.load);
+    const flows = {
+      productionToLoad: 0,
+      productionToBattery: 0,
+      productionToGrid: 0,
+      gridToLoad: 0,
+      gridToBattery: 0,
+      batteryToLoad: 0
+    };
+    let remainingProduction = productionFlow;
+    let remainingLoad = loadDemand;
+    if (remainingProduction > 0 && remainingLoad > 0) {
+      flows.productionToLoad = Math.min(remainingProduction, remainingLoad);
+      remainingProduction -= flows.productionToLoad;
+      remainingLoad -= flows.productionToLoad;
+    }
+    if (batteryFlow < 0 && remainingProduction > 0) {
+      flows.productionToBattery = Math.min(remainingProduction, Math.abs(batteryFlow));
+      remainingProduction -= flows.productionToBattery;
+    }
+    if (batteryFlow > 0 && remainingLoad > 0) {
+      flows.batteryToLoad = Math.min(batteryFlow, remainingLoad);
+      remainingLoad -= flows.batteryToLoad;
+    }
+    if (remainingLoad > 0 && gridFlow > 0) {
+      flows.gridToLoad = Math.min(gridFlow, remainingLoad);
+      remainingLoad -= flows.gridToLoad;
+    }
+    if (batteryFlow < 0 && gridFlow > 10) {
+      const batteryNeed = Math.abs(batteryFlow) - flows.productionToBattery;
+      if (batteryNeed > 1) {
+        flows.gridToBattery = Math.min(gridFlow - flows.gridToLoad, batteryNeed);
+      }
+    }
+    if (gridFlow < -10) {
+      flows.productionToGrid = Math.abs(gridFlow);
+    }
+    return flows;
+  }
+  function handleAction(hass, fireEvent, actionConfig, entityId) {
+    if (!hass) return;
+    const config = actionConfig || { action: "more-info" };
+    const action = config.action || "more-info";
+    switch (action) {
+      case "more-info":
+        const entityToShow = config.entity || entityId;
+        if (entityToShow) {
+          fireEvent("hass-more-info", { entityId: entityToShow });
+        }
+        break;
+      case "navigate":
+        if (config.path) {
+          history.pushState(null, "", config.path);
+          fireEvent("location-changed", { replace: false });
+        }
+        break;
+      case "url":
+        if (config.path) {
+          window.open(config.path);
+        }
+        break;
+      case "toggle":
+        if (entityId) {
+          hass.callService("homeassistant", "toggle", { entity_id: entityId });
+        }
+        break;
+      case "call-service":
+        if (config.service) {
+          const [domain, service] = config.service.split(".");
+          hass.callService(domain, service, config.service_data || {}, config.target);
+        }
+        break;
+    }
+  }
+  function updateSegmentVisibility(segment, pixelWidth, hasValue) {
+    if (!segment || !hasValue) {
+      segment?.setAttribute("data-width-px", "");
+      return;
+    }
+    const SHOW_LABEL_THRESHOLD = 80;
+    const SHOW_ICON_THRESHOLD = 40;
+    if (pixelWidth >= SHOW_LABEL_THRESHOLD) {
+      segment.setAttribute("data-width-px", "show-label");
+    } else if (pixelWidth >= SHOW_ICON_THRESHOLD) {
+      segment.setAttribute("data-width-px", "show-icon");
+    } else {
+      segment.setAttribute("data-width-px", "");
+    }
+  }
+  class CompactRenderer {
+    // Dark yellow (export)
+    constructor(container, config, hass, viewMode, getIconCallback, handleActionCallback) {
+      this.productionColor = "#256028";
+      this.batteryColor = "#104b79";
+      this.gridColor = "#7a211b";
+      this.returnColor = "#7a6b1b";
+      this.container = container;
+      this.config = config;
+      this.hass = hass;
+      this.viewMode = viewMode;
+      this.getIconCallback = getIconCallback;
+      this.handleActionCallback = handleActionCallback;
+    }
+    /**
+     * Render or update the compact view
+     */
+    render(data) {
+      if (!this.container.querySelector(".compact-view") || this.lastViewMode !== this.viewMode) {
+        this.initializeStructure();
+        this.attachEventHandlers();
+        this.lastViewMode = this.viewMode;
+      }
+      this.updateSegments(data);
+    }
+    /**
+     * Update the view mode
+     */
+    setViewMode(viewMode) {
+      if (this.viewMode !== viewMode) {
+        this.viewMode = viewMode;
+        this.lastViewMode = void 0;
+      }
+    }
+    /**
+     * Initialize the HTML structure
+     */
+    initializeStructure() {
+      this.container.innerHTML = `
+      <ha-card>
+        <style>
+          :host {
+            display: block;
+            width: 100%;
+            height: 100%;
+          }
+          ha-card {
+            padding: 16px;
+            box-sizing: border-box;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+          }
+          .compact-view {
+            display: flex;
+            flex-direction: column;
+            gap: ${this.viewMode === "compact-battery" ? "12px" : "0"};
+            width: 100%;
+          }
+          .compact-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+          }
+          .bar-container {
+            flex: 1;
+            height: 60px;
+            background: rgb(40, 40, 40);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            position: relative;
+          }
+          .bar-segment {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: rgb(255, 255, 255);
+            transition: width 0.5s ease-out;
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+          }
+          .bar-segment:hover {
+            filter: brightness(1.2);
+          }
+          .bar-segment-content {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+          }
+          .bar-segment-icon {
+            width: 24px;
+            height: 24px;
+            flex-shrink: 0;
+            opacity: 1;
+            color: rgb(255, 255, 255);
+          }
+          .bar-segment-label {
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+          }
+          .bar-segment[data-width-px] .bar-segment-label {
+            display: none;
+          }
+          .bar-segment[data-width-px="show-label"] .bar-segment-label {
+            display: inline;
+          }
+          .bar-segment[data-width-px] .bar-segment-icon {
+            display: none;
+          }
+          .bar-segment[data-width-px="show-icon"] .bar-segment-icon,
+          .bar-segment[data-width-px="show-label"] .bar-segment-icon {
+            display: block;
+          }
+          .row-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: rgb(255, 255, 255);
+            white-space: nowrap;
+            min-width: 100px;
+            text-align: right;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+          }
+          .row-value:hover {
+            filter: brightness(1.1);
+          }
+          .row-value.battery-discharge {
+            text-align: left;
+            flex-direction: row-reverse;
+          }
+          .row-icon {
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+            color: rgb(160, 160, 160);
+            display: flex;
+            align-items: center;
+          }
+          .row-text {
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            line-height: 1;
+          }
+          .row-unit {
+            font-size: 14px;
+            color: rgb(160, 160, 160);
+            margin-left: 4px;
+          }
+        </style>
+        <div class="compact-view">
+          <!-- Load Row -->
+          <div class="compact-row">
+            <div class="bar-container">
+              <div id="grid-segment" class="bar-segment" style="background: ${this.gridColor}; width: 0%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback("grid", "mdi:transmission-tower")}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+              <div id="battery-segment" class="bar-segment" style="background: ${this.batteryColor}; width: 0%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback("battery", "mdi:battery")}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+              <div id="production-segment" class="bar-segment" style="background: ${this.productionColor}; width: 0%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback("production", "mdi:solar-power")}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+            </div>
+            <div class="row-value">
+              <ha-icon class="row-icon" icon="${this.getIconCallback("load", "mdi:home-lightning-bolt")}"></ha-icon>
+              <div class="row-text">
+                <span id="load-value-text">0</span><span class="row-unit">W</span>
+              </div>
+            </div>
+          </div>
+          ${this.viewMode === "compact-battery" ? `
+          <!-- Battery Row -->
+          <div class="compact-row" id="battery-row">
+            <div class="row-value" id="battery-soc-left" style="display: none;">
+              <ha-icon class="row-icon" icon="${this.getIconCallback("battery", "mdi:battery")}"></ha-icon>
+              <div class="row-text">
+                <span id="battery-soc-text-left">--</span><span class="row-unit">%</span>
+              </div>
+            </div>
+            <div class="bar-container">
+              <!-- Color order: red, yellow, blue, green (left to right) -->
+              <div id="battery-grid-segment" class="bar-segment" style="background: ${this.gridColor}; width: 0%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback("grid", "mdi:transmission-tower")}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+              <div id="battery-load-segment" class="bar-segment" style="background: ${this.batteryColor}; width: 0%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback("load", "mdi:home")}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+              <div id="battery-production-segment" class="bar-segment" style="background: ${this.productionColor}; width: 0%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback("production", "mdi:solar-power")}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+            </div>
+            <div class="row-value" id="battery-soc-right">
+              <ha-icon class="row-icon" icon="${this.getIconCallback("battery", "mdi:battery")}"></ha-icon>
+              <div class="row-text">
+                <span id="battery-soc-text-right">--</span><span class="row-unit">%</span>
+              </div>
+            </div>
+          </div>
+          ` : ""}
+        </div>
+      </ha-card>
+    `;
+    }
+    /**
+     * Attach click event handlers
+     */
+    attachEventHandlers() {
+      requestAnimationFrame(() => {
+        const productionSeg = this.container.querySelector("#production-segment");
+        const batterySeg = this.container.querySelector("#battery-segment");
+        const gridSeg = this.container.querySelector("#grid-segment");
+        const loadValues = this.container.querySelectorAll(".row-value");
+        const loadValue = loadValues[0];
+        if (productionSeg) {
+          productionSeg.addEventListener("click", () => {
+            this.handleActionCallback(this.config.production?.tap, this.config.production?.entity);
+          });
+        }
+        if (batterySeg) {
+          batterySeg.addEventListener("click", () => {
+            this.handleActionCallback(this.config.battery?.tap, this.config.battery?.entity);
+          });
+        }
+        if (gridSeg) {
+          gridSeg.addEventListener("click", () => {
+            this.handleActionCallback(this.config.grid?.tap, this.config.grid?.entity);
+          });
+        }
+        if (loadValue) {
+          loadValue.addEventListener("click", () => {
+            this.handleActionCallback(this.config.load.tap, this.config.load.entity);
+          });
+        }
+        if (this.viewMode === "compact-battery") {
+          const batteryProdSeg = this.container.querySelector("#battery-production-segment");
+          const batteryLoadSeg = this.container.querySelector("#battery-load-segment");
+          const batteryGridSeg = this.container.querySelector("#battery-grid-segment");
+          const batterySocLeft = this.container.querySelector("#battery-soc-left");
+          const batterySocRight = this.container.querySelector("#battery-soc-right");
+          if (batteryProdSeg) {
+            batteryProdSeg.addEventListener("click", () => {
+              this.handleActionCallback(this.config.production?.tap, this.config.production?.entity);
+            });
+          }
+          if (batteryLoadSeg) {
+            batteryLoadSeg.addEventListener("click", () => {
+              this.handleActionCallback(this.config.load.tap, this.config.load.entity);
+            });
+          }
+          if (batteryGridSeg) {
+            batteryGridSeg.addEventListener("click", () => {
+              this.handleActionCallback(this.config.grid?.tap, this.config.grid?.entity);
+            });
+          }
+          if (batterySocLeft) {
+            batterySocLeft.addEventListener("click", () => {
+              this.handleActionCallback(this.config.battery?.tap, this.config.battery?.entity);
+            });
+          }
+          if (batterySocRight) {
+            batterySocRight.addEventListener("click", () => {
+              this.handleActionCallback(this.config.battery?.tap, this.config.battery?.entity);
+            });
+          }
+        }
+      });
+    }
+    /**
+     * Update segment widths and labels
+     */
+    updateSegments(data) {
+      const { load, flows, battery, batterySoc } = data;
+      const productionValue = flows.productionToLoad;
+      const batteryToLoad = flows.batteryToLoad;
+      const gridToLoad = flows.gridToLoad;
+      const total = load || 1;
+      const productionPercent = productionValue / total * 100;
+      const batteryPercent = batteryToLoad / total * 100;
+      const gridPercent = gridToLoad / total * 100;
+      const sumPercent = productionPercent + batteryPercent + gridPercent;
+      let visualProductionPercent = productionPercent;
+      let visualBatteryPercent = batteryPercent;
+      let visualGridPercent = gridPercent;
+      if (sumPercent > 0) {
+        const scale = 100 / sumPercent;
+        visualProductionPercent = productionPercent * scale;
+        visualBatteryPercent = batteryPercent * scale;
+        visualGridPercent = gridPercent * scale;
+      }
+      let batteryGridWatts = 0;
+      let batteryLoadWatts = 0;
+      let batteryProdWatts = 0;
+      let visualBatteryGridPercent = 0;
+      let visualBatteryLoadPercent = 0;
+      let visualBatteryProdPercent = 0;
+      if (this.viewMode === "compact-battery") {
+        if (battery < 0) {
+          const batteryCharging = Math.abs(battery);
+          const batteryTotal = batteryCharging || 1;
+          batteryGridWatts = flows.gridToBattery;
+          batteryProdWatts = flows.productionToBattery;
+          const batteryGridPercent = flows.gridToBattery / batteryTotal * 100;
+          const batteryProdPercent = flows.productionToBattery / batteryTotal * 100;
+          const chargeSum = batteryGridPercent + batteryProdPercent;
+          if (chargeSum > 0) {
+            const scale = 100 / chargeSum;
+            visualBatteryGridPercent = batteryGridPercent * scale;
+            visualBatteryProdPercent = batteryProdPercent * scale;
+          }
+        } else if (battery > 0) {
+          const batteryTotal = battery || 1;
+          const batteryToGrid = battery - flows.batteryToLoad;
+          batteryLoadWatts = flows.batteryToLoad;
+          batteryGridWatts = batteryToGrid;
+          const batteryLoadPercent = flows.batteryToLoad / batteryTotal * 100;
+          const batteryGridPercent = batteryToGrid / batteryTotal * 100;
+          const dischargeSum = batteryLoadPercent + batteryGridPercent;
+          if (dischargeSum > 0) {
+            const scale = 100 / dischargeSum;
+            visualBatteryLoadPercent = batteryLoadPercent * scale;
+            visualBatteryGridPercent = batteryGridPercent * scale;
+          }
+        }
+      }
+      requestAnimationFrame(() => {
+        this.updateLoadBar(
+          visualProductionPercent,
+          visualBatteryPercent,
+          visualGridPercent,
+          productionPercent,
+          batteryPercent,
+          gridPercent,
+          productionValue,
+          batteryToLoad,
+          gridToLoad,
+          load
+        );
+        if (this.viewMode === "compact-battery") {
+          this.updateBatteryBar(
+            visualBatteryGridPercent,
+            visualBatteryLoadPercent,
+            visualBatteryProdPercent,
+            batteryGridWatts,
+            batteryLoadWatts,
+            batteryProdWatts,
+            battery,
+            batterySoc
+          );
+        }
+      });
+    }
+    /**
+     * Update the load bar segments
+     */
+    updateLoadBar(visualProductionPercent, visualBatteryPercent, visualGridPercent, productionPercent, batteryPercent, gridPercent, productionValue, batteryToLoad, gridToLoad, load) {
+      const productionSegment = this.container.querySelector("#production-segment");
+      const batterySegment = this.container.querySelector("#battery-segment");
+      const gridSegment = this.container.querySelector("#grid-segment");
+      const loadValueText = this.container.querySelector("#load-value-text");
+      const barContainer = this.container.querySelector(".bar-container");
+      if (productionSegment) {
+        productionSegment.style.width = `${visualProductionPercent}%`;
+        const label = productionSegment.querySelector(".bar-segment-label");
+        if (label && productionValue > 0) {
+          label.textContent = `${Math.round(productionPercent)}%`;
+        }
+        const widthPx = visualProductionPercent / 100 * (barContainer?.clientWidth || 0);
+        updateSegmentVisibility(productionSegment, widthPx, productionValue > 0);
+      }
+      if (batterySegment) {
+        batterySegment.style.width = `${visualBatteryPercent}%`;
+        const label = batterySegment.querySelector(".bar-segment-label");
+        if (label && batteryToLoad > 0) {
+          label.textContent = `${Math.round(batteryPercent)}%`;
+        }
+        const widthPx = visualBatteryPercent / 100 * (barContainer?.clientWidth || 0);
+        updateSegmentVisibility(batterySegment, widthPx, batteryToLoad > 0);
+      }
+      if (gridSegment) {
+        gridSegment.style.width = `${visualGridPercent}%`;
+        const label = gridSegment.querySelector(".bar-segment-label");
+        if (label && gridToLoad > 0) {
+          label.textContent = `${Math.round(gridPercent)}%`;
+        }
+        const widthPx = visualGridPercent / 100 * (barContainer?.clientWidth || 0);
+        updateSegmentVisibility(gridSegment, widthPx, gridToLoad > 0);
+      }
+      if (loadValueText) {
+        loadValueText.textContent = String(Math.round(load));
+      }
+    }
+    /**
+     * Update the battery bar segments
+     */
+    updateBatteryBar(visualBatteryGridPercent, visualBatteryLoadPercent, visualBatteryProdPercent, batteryGridWatts, batteryLoadWatts, batteryProdWatts, battery, batterySoc) {
+      const batteryGridSegment = this.container.querySelector("#battery-grid-segment");
+      const batteryLoadSegment = this.container.querySelector("#battery-load-segment");
+      const batteryProdSegment = this.container.querySelector("#battery-production-segment");
+      const batterySocLeft = this.container.querySelector("#battery-soc-left");
+      const batterySocRight = this.container.querySelector("#battery-soc-right");
+      const batterySocTextLeft = this.container.querySelector("#battery-soc-text-left");
+      const batterySocTextRight = this.container.querySelector("#battery-soc-text-right");
+      const batteryBarContainers = this.container.querySelectorAll(".bar-container");
+      const batteryBarContainer = batteryBarContainers[1];
+      let gridIsImport = false;
+      if (battery < 0) {
+        gridIsImport = true;
+        if (batterySocLeft) batterySocLeft.style.display = "none";
+        if (batterySocRight) batterySocRight.style.display = "flex";
+        if (batterySocTextRight && batterySoc !== null) {
+          batterySocTextRight.textContent = batterySoc.toFixed(1);
+        }
+      } else if (battery > 0) {
+        gridIsImport = false;
+        if (batterySocLeft) batterySocLeft.style.display = "flex";
+        if (batterySocRight) batterySocRight.style.display = "none";
+        if (batterySocTextLeft && batterySoc !== null) {
+          batterySocTextLeft.textContent = batterySoc.toFixed(1);
+        }
+      } else {
+        if (batterySocLeft) batterySocLeft.style.display = "none";
+        if (batterySocRight) batterySocRight.style.display = "flex";
+        if (batterySocTextRight && batterySoc !== null) {
+          batterySocTextRight.textContent = batterySoc.toFixed(1);
+        }
+      }
+      if (batteryGridSegment) {
+        const gridColorToUse = gridIsImport ? this.gridColor : this.returnColor;
+        batteryGridSegment.style.width = `${visualBatteryGridPercent}%`;
+        batteryGridSegment.style.background = gridColorToUse;
+        const label = batteryGridSegment.querySelector(".bar-segment-label");
+        if (label && batteryGridWatts > 0) {
+          label.textContent = `${Math.round(batteryGridWatts)}W`;
+        }
+        const pixelWidth = visualBatteryGridPercent / 100 * (batteryBarContainer?.offsetWidth || 0);
+        updateSegmentVisibility(batteryGridSegment, pixelWidth, batteryGridWatts > 0);
+      }
+      if (batteryLoadSegment) {
+        batteryLoadSegment.style.width = `${visualBatteryLoadPercent}%`;
+        const label = batteryLoadSegment.querySelector(".bar-segment-label");
+        if (label && batteryLoadWatts > 0) {
+          label.textContent = `${Math.round(batteryLoadWatts)}W`;
+        }
+        const pixelWidth = visualBatteryLoadPercent / 100 * (batteryBarContainer?.offsetWidth || 0);
+        updateSegmentVisibility(batteryLoadSegment, pixelWidth, batteryLoadWatts > 0);
+      }
+      if (batteryProdSegment) {
+        batteryProdSegment.style.width = `${visualBatteryProdPercent}%`;
+        const label = batteryProdSegment.querySelector(".bar-segment-label");
+        if (label && batteryProdWatts > 0) {
+          label.textContent = `${Math.round(batteryProdWatts)}W`;
+        }
+        const pixelWidth = visualBatteryProdPercent / 100 * (batteryBarContainer?.offsetWidth || 0);
+        updateSegmentVisibility(batteryProdSegment, pixelWidth, batteryProdWatts > 0);
+      }
+    }
+  }
+  class Meter {
+    constructor(id, value, min, max, bidirectional, label, icon, units, invertView = false, showPlus = false, tapAction, entityId, fireEventCallback) {
+      this.id = id;
+      this._value = value;
+      this.min = min;
+      this.max = max;
+      this.bidirectional = bidirectional;
+      this.label = label;
+      this.icon = icon;
+      this.units = units;
+      this._invertView = invertView;
+      this.showPlus = showPlus;
+      this.tapAction = tapAction;
+      this.entityId = entityId;
+      this.fireEventCallback = fireEventCallback;
+      this.element = null;
+      this.radius = 50;
+      this.boxWidth = 120;
+      this.boxHeight = 135;
+      this.boxRadius = 16;
+      this.centerX = this.boxWidth / 2;
+      this.centerY = this.radius + 25;
+      this.offsetX = -this.centerX;
+      this.offsetY = -this.centerY;
+      this.needleState = { target: 0, current: 0, ghost: 0 };
+      this._lastAnimationTime = null;
+      this._animationFrameId = null;
+      this._updateNeedleAngle();
+    }
+    get value() {
+      return this._value;
+    }
+    set value(newValue) {
+      if (this._value === newValue) return;
+      this._value = newValue;
+      this._updateNeedleAngle();
+      if (this.element) {
+        const valueText = this.element.querySelector(`#value-${this.id}`);
+        if (valueText) {
+          valueText.textContent = this._formatValueText();
+        }
+        this.updateDimming();
+      }
+    }
+    get invertView() {
+      return this._invertView;
+    }
+    set invertView(newInvertView) {
+      if (this._invertView === newInvertView) return;
+      this._invertView = newInvertView;
+      this._updateNeedleAngle();
+      if (this.element) {
+        const valueText = this.element.querySelector(`#value-${this.id}`);
+        if (valueText) {
+          valueText.textContent = this._formatValueText();
+        }
+      }
+    }
+    get displayValue() {
+      return this._invertView ? -this._value : this._value;
+    }
+    _formatValueText() {
+      const displayValue = this.displayValue;
+      const valueStr = displayValue.toFixed(0);
+      if (displayValue < 0) {
+        return valueStr + " ";
+      } else if (displayValue > 0 && this.showPlus) {
+        return "+" + valueStr + " ";
+      } else {
+        return valueStr;
+      }
+    }
+    _updateNeedleAngle() {
+      let percentage;
+      let angle;
+      const displayValue = this.displayValue;
+      if (this.bidirectional) {
+        const range = this.max - this.min;
+        percentage = Math.min(Math.max((displayValue - this.min) / range, 0), 1);
+        angle = 180 - percentage * 180;
+      } else {
+        percentage = Math.min(Math.max(displayValue / this.max, 0), 1);
+        angle = 180 - percentage * 180;
+      }
+      this.needleState.target = angle;
+    }
+    updateDimming() {
+      if (!this.element) return;
+      const dimmer = this.element.querySelector(`#dimmer-${this.id}`);
+      if (dimmer) {
+        const isZero = Math.abs(this.value) < 0.5;
+        dimmer.setAttribute("opacity", isZero ? "0.3" : "0");
+      }
+    }
+    startAnimation() {
+      if (this._animationFrameId) return;
+      const animate = (timestamp) => {
+        if (!this._lastAnimationTime) {
+          this._lastAnimationTime = timestamp;
+        }
+        const deltaTime = timestamp - this._lastAnimationTime;
+        this._lastAnimationTime = timestamp;
+        if (!this.element) {
+          this._animationFrameId = null;
+          return;
+        }
+        const needleLength = this.radius - 5;
+        const mainLerpFactor = Math.min(deltaTime / 150, 1);
+        this.needleState.current += (this.needleState.target - this.needleState.current) * mainLerpFactor;
+        const ghostLerpFactor = Math.min(deltaTime / 400, 1);
+        this.needleState.ghost += (this.needleState.current - this.needleState.ghost) * ghostLerpFactor;
+        const maxLag = 10;
+        if (this.needleState.ghost < this.needleState.current - maxLag) {
+          this.needleState.ghost = this.needleState.current - maxLag;
+        } else if (this.needleState.ghost > this.needleState.current + maxLag) {
+          this.needleState.ghost = this.needleState.current + maxLag;
+        }
+        const needle = this.element.querySelector(`#needle-${this.id}`);
+        if (needle) {
+          const needleRad = this.needleState.current * Math.PI / 180;
+          const needleX = this.centerX + needleLength * Math.cos(needleRad);
+          const needleY = this.centerY - needleLength * Math.sin(needleRad);
+          needle.setAttribute("x2", String(needleX));
+          needle.setAttribute("y2", String(needleY));
+        }
+        const ghostNeedle = this.element.querySelector(`#ghost-needle-${this.id}`);
+        if (ghostNeedle) {
+          const ghostRad = this.needleState.ghost * Math.PI / 180;
+          const ghostX = this.centerX + needleLength * Math.cos(ghostRad);
+          const ghostY = this.centerY - needleLength * Math.sin(ghostRad);
+          ghostNeedle.setAttribute("x2", String(ghostX));
+          ghostNeedle.setAttribute("y2", String(ghostY));
+        }
+        this._animationFrameId = requestAnimationFrame(animate);
+      };
+      this._animationFrameId = requestAnimationFrame(animate);
+    }
+    stopAnimation() {
+      if (this._animationFrameId) {
+        cancelAnimationFrame(this._animationFrameId);
+        this._animationFrameId = null;
+        this._lastAnimationTime = null;
+      }
+    }
+    /**
+     * Handle tap action when meter is clicked
+     */
+    _handleTapAction() {
+      if (!this.fireEventCallback) return;
+      const config = this.tapAction || { action: "more-info" };
+      const action = config.action || "more-info";
+      switch (action) {
+        case "more-info":
+          const entityId = config.entity || this.entityId;
+          if (entityId) {
+            this.fireEventCallback("hass-more-info", { entityId });
+          }
+          break;
+        case "navigate":
+          if (config.path) {
+            history.pushState(null, "", config.path);
+            this.fireEventCallback("location-changed", { replace: false });
+          }
+          break;
+        case "url":
+          if (config.path) {
+            window.open(config.path);
+          }
+          break;
+        case "toggle":
+          if (this.entityId) {
+            this.fireEventCallback("call-service", {
+              domain: "homeassistant",
+              service: "toggle",
+              service_data: { entity_id: this.entityId }
+            });
+          }
+          break;
+        case "call-service":
+          if (config.service) {
+            const [domain, service] = config.service.split(".");
+            this.fireEventCallback("call-service", {
+              domain,
+              service,
+              service_data: config.service_data || {},
+              target: config.target
+            });
+          }
+          break;
+      }
+    }
+    /**
+     * Create and return the SVG element for this meter
+     */
+    /**
+     * Create and return the SVG element for this meter
+     */
+    createElement() {
+      const displayValue = this.displayValue;
+      let percentage;
+      let angle;
+      if (this.bidirectional) {
+        const range = this.max - this.min;
+        percentage = Math.min(Math.max((displayValue - this.min) / range, 0), 1);
+        angle = 180 - percentage * 180;
+      } else {
+        percentage = Math.min(Math.max(displayValue / this.max, 0), 1);
+        angle = 180 - percentage * 180;
+      }
+      this.needleState.target = angle;
+      this.needleState.current = angle;
+      this.needleState.ghost = angle;
+      const ticks = this.bidirectional ? [this.min, 0, this.max] : [0, this.max / 2, this.max];
+      const tickMarks = ticks.map((tickValue) => {
+        const tickPercentage = this.bidirectional ? (tickValue - this.min) / (this.max - this.min) : tickValue / this.max;
+        const tickAngle = 180 - tickPercentage * 180;
+        const tickRad = tickAngle * Math.PI / 180;
+        const tickStartR = this.radius;
+        const tickEndR = this.radius - 8;
+        const x1 = this.centerX + tickStartR * Math.cos(tickRad);
+        const y1 = this.centerY - tickStartR * Math.sin(tickRad);
+        const x2 = this.centerX + tickEndR * Math.cos(tickRad);
+        const y2 = this.centerY - tickEndR * Math.sin(tickRad);
+        return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgb(160, 160, 160)" stroke-width="2" />`;
+      }).join("");
+      const zeroPercentage = this.bidirectional ? (0 - this.min) / (this.max - this.min) : 0;
+      const zeroAngle = 180 - zeroPercentage * 180;
+      const zeroRad = zeroAngle * Math.PI / 180;
+      const zeroX1 = this.centerX;
+      const zeroY1 = this.centerY;
+      const zeroX2 = this.centerX + this.radius * Math.cos(zeroRad);
+      const zeroY2 = this.centerY - this.radius * Math.sin(zeroRad);
+      const zeroLine = `<line x1="${zeroX1}" y1="${zeroY1}" x2="${zeroX2}" y2="${zeroY2}" stroke="rgb(100, 100, 100)" stroke-width="2" />`;
+      const needleRad = angle * Math.PI / 180;
+      const needleLength = this.radius - 5;
+      const needleX = this.centerX + needleLength * Math.cos(needleRad);
+      const needleY = this.centerY - needleLength * Math.sin(needleRad);
+      const clipHeight = this.centerY + 5;
+      const valueY = this.centerY + this.radius * 0.5;
+      const unitsY = this.centerY + this.radius * 0.7;
+      const svgMarkup = `
       <g transform="translate(${this.offsetX}, ${this.offsetY})">
         <defs>
           <clipPath id="clip-${this.id}-local">
-            <rect x="0" y="0" width="${this.boxWidth}" height="${w+2}" />
+            <rect x="0" y="0" width="${this.boxWidth}" height="${clipHeight + 2}" />
           </clipPath>
         </defs>
         
@@ -10,109 +832,556 @@
         
         <g clip-path="url(#clip-${this.id}-local)">
           <circle cx="${this.centerX}" cy="${this.centerY}" r="${this.radius}" fill="rgb(70, 70, 70)" />
-          ${l}
+          ${zeroLine}
         </g>
         
-        ${o}
+        ${tickMarks}
         
         <circle cx="${this.centerX}" cy="${this.centerY}" r="${this.radius}" fill="none" stroke="rgb(160, 160, 160)" stroke-width="2" />
         
         <text x="${this.centerX}" y="15" text-anchor="middle" font-size="12" fill="rgb(255, 255, 255)" font-weight="500">${this.label}</text>
         
         <!-- Icon rendered via foreignObject (for extraction source) -->
-        <foreignObject id="icon-source-${this.id}" x="${this.centerX-18}" y="${this.centerY-42}" width="36" height="36">
+        <foreignObject id="icon-source-${this.id}" x="${this.centerX - 18}" y="${this.centerY - 42}" width="36" height="36">
           <div xmlns="http://www.w3.org/1999/xhtml" style="width: 36px; height: 36px;">
             <ha-icon icon="${this.icon}" style="--mdc-icon-size: 36px; color: rgb(160, 160, 160);"></ha-icon>
           </div>
         </foreignObject>
         
         <!-- Icon rendered as native SVG path (populated after extraction, will overlay) -->
-        <g id="icon-display-${this.id}" transform="translate(${this.centerX-18}, ${this.centerY-42}) scale(1.5)">
+        <g id="icon-display-${this.id}" transform="translate(${this.centerX - 18}, ${this.centerY - 42}) scale(1.5)">
           <!-- Path will be inserted here by _extractIconPaths -->
         </g>
         
-        <line id="ghost-needle-${this.id}" x1="${this.centerX}" y1="${this.centerY}" x2="${u}" y2="${m}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" opacity="0.3" />
+        <line id="ghost-needle-${this.id}" x1="${this.centerX}" y1="${this.centerY}" x2="${needleX}" y2="${needleY}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" opacity="0.3" />
         
-        <line id="needle-${this.id}" x1="${this.centerX}" y1="${this.centerY}" x2="${u}" y2="${m}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" />
+        <line id="needle-${this.id}" x1="${this.centerX}" y1="${this.centerY}" x2="${needleX}" y2="${needleY}" stroke="rgb(255, 255, 255)" stroke-width="4" stroke-linecap="round" />
         
         <circle cx="${this.centerX}" cy="${this.centerY}" r="5" fill="rgb(255, 255, 255)" />
         
-        <text id="value-${this.id}" x="${this.centerX}" y="${S}" text-anchor="middle" font-size="16" fill="rgb(255, 255, 255)" font-weight="600">${this._formatValueText()}</text>
+        <text id="value-${this.id}" x="${this.centerX}" y="${valueY}" text-anchor="middle" font-size="16" fill="rgb(255, 255, 255)" font-weight="600">${this._formatValueText()}</text>
         
-        <text x="${this.centerX}" y="${E}" text-anchor="middle" font-size="8" fill="rgb(160, 160, 160)" font-weight="400" letter-spacing="0.5">${this.units}</text>
+        <text x="${this.centerX}" y="${unitsY}" text-anchor="middle" font-size="8" fill="rgb(160, 160, 160)" font-weight="400" letter-spacing="0.5">${this.units}</text>
         
         <rect id="dimmer-${this.id}" x="0" y="0" width="${this.boxWidth}" height="${this.boxHeight}" rx="${this.boxRadius}" ry="${this.boxRadius}" fill="black" opacity="0" pointer-events="none" style="transition: opacity 0.8s ease-in-out;" />
       </g>
-    `,y=document.createElementNS("http://www.w3.org/2000/svg","svg");y.innerHTML=$;const p=y.firstElementChild;return this.element=p,(!this.tapAction||this.tapAction.action!=="none")&&(p.style.cursor="pointer",p.addEventListener("click",C=>{this._handleTapAction(),C.stopPropagation()}),p.addEventListener("mouseenter",()=>{p.style.filter="brightness(1.1)"}),p.addEventListener("mouseleave",()=>{p.style.filter=""})),p}}function Z(G){const t=Math.max(0,G.production),e=G.grid,i=G.battery,n=Math.max(0,G.load),o={productionToLoad:0,productionToBattery:0,productionToGrid:0,gridToLoad:0,gridToBattery:0,batteryToLoad:0};let a=t,r=n;if(a>0&&r>0&&(o.productionToLoad=Math.min(a,r),a-=o.productionToLoad,r-=o.productionToLoad),i<0&&a>0&&(o.productionToBattery=Math.min(a,Math.abs(i)),a-=o.productionToBattery),i>0&&r>0&&(o.batteryToLoad=Math.min(i,r),r-=o.batteryToLoad),r>0&&e>0&&(o.gridToLoad=Math.min(e,r),r-=o.gridToLoad),i<0&&e>10){const h=Math.abs(i)-o.productionToBattery;h>1&&(o.gridToBattery=Math.min(e-o.gridToLoad,h))}return e<-10&&(o.productionToGrid=Math.abs(e)),o}class J extends HTMLElement{constructor(){super(),this._resizeObserver=null,this._animationFrameId=null,this._flowDots=new Map,this._lastAnimationTime=null,this._iconCache=new Map,this._iconsExtracted=!1,this._iconExtractionTimeouts=new Set,this._chartDataCache=void 0,this._chartRenderPending=!1,this._lastIndicatorUpdate=0,this._isVisible=!0,this._pendingUpdate=!1,this._meters=new Map,this._speedMultiplier=.8,this._dotsPerFlow=3;const t=500,e=470,i=5,n=3;this._meterPositions={production:{x:60+i,y:80+n},battery:{x:130+i,y:240+n},grid:{x:60+i,y:400+n},load:{x:360+i,y:240+n}},this._canvasWidth=t,this._canvasHeight=e}static getStubConfig(){return{}}static getConfigForm(){return{schema:[{name:"view_mode",label:"View Mode",selector:{select:{options:[{value:"default",label:"Default"},{value:"compact",label:"Compact Bar"},{value:"compact-battery",label:"Compact with Battery"},{value:"chart",label:"Chart"}]}}},{name:"grid_entity",label:"Grid",required:!0,selector:{entity:{domain:"sensor",device_class:"power"}}},{name:"grid_name",selector:{entity_name:{}},context:{entity:"grid_entity"}},{name:"grid_icon",selector:{icon:{}},context:{icon_entity:"grid_entity"}},{name:"grid_min",label:"Grid Min (W)",selector:{number:{mode:"box"}}},{name:"grid_max",label:"Grid Max (W)",selector:{number:{mode:"box"}}},{name:"grid_tap_action",label:"Grid Tap Action",selector:{"ui-action":{}}},{name:"load_entity",label:"Load",required:!0,selector:{entity:{domain:"sensor",device_class:"power"}}},{name:"load_name",selector:{entity_name:{}},context:{entity:"load_entity"}},{name:"load_icon",selector:{icon:{}},context:{icon_entity:"load_entity"}},{name:"load_max",label:"Load Max (W)",selector:{number:{mode:"box"}}},{name:"load_tap_action",label:"Load Tap Action",selector:{"ui-action":{}}},{name:"production_entity",label:"Production",required:!0,selector:{entity:{domain:"sensor",device_class:"power"}}},{name:"production_name",selector:{entity_name:{}},context:{entity:"production_entity"}},{name:"production_icon",selector:{icon:{}},context:{icon_entity:"production_entity"}},{name:"production_max",label:"Production Max (W)",selector:{number:{mode:"box"}}},{name:"production_tap_action",label:"Production Tap Action",selector:{"ui-action":{}}},{name:"battery_entity",label:"Battery",required:!0,selector:{entity:{domain:"sensor",device_class:"power"}}},{name:"battery_name",selector:{entity_name:{}},context:{entity:"battery_entity"}},{name:"battery_icon",selector:{icon:{}},context:{icon_entity:"battery_entity"}},{name:"battery_min",label:"Battery Min (W)",selector:{number:{mode:"box"}}},{name:"battery_max",label:"Battery Max (W)",selector:{number:{mode:"box"}}},{name:"battery_tap_action",label:"Battery Tap Action",selector:{"ui-action":{}}},{name:"battery_soc_entity",label:"Battery SOC (%) Entity",selector:{entity:{domain:"sensor"}}},{name:"invert_battery_data",label:"Invert Battery Data",selector:{boolean:{}}},{name:"invert_battery_view",label:"Invert Battery View",selector:{boolean:{}}},{name:"show_plus",label:"Show + Sign",selector:{boolean:{}}}]}}connectedCallback(){this._resizeObserver=new ResizeObserver(()=>{if(this._lastValues){const t=this._lastValues;requestAnimationFrame(()=>{this._drawFlows(t.grid,t.production,t.load,t.battery)})}}),this.parentElement&&this._resizeObserver.observe(this.parentElement),this._resizeObserver.observe(this),this._visibilityObserver=new IntersectionObserver(t=>{t.forEach(e=>{this._isVisible=e.isIntersecting,this._isVisible&&this._pendingUpdate&&(this._pendingUpdate=!1,this._updateChartIndicators())})},{threshold:0}),this._visibilityObserver.observe(this)}disconnectedCallback(){this._resizeObserver&&(this._resizeObserver.disconnect(),this._resizeObserver=null),this._visibilityObserver&&(this._visibilityObserver.disconnect(),this._visibilityObserver=void 0),this._meters.forEach(t=>t.stopAnimation()),this._animationFrameId&&(cancelAnimationFrame(this._animationFrameId),this._animationFrameId=null),this._iconExtractionTimeouts.forEach(t=>clearTimeout(t)),this._iconExtractionTimeouts.clear(),this._indicatorUpdateTimeout&&(clearTimeout(this._indicatorUpdateTimeout),this._indicatorUpdateTimeout=void 0),this._chartDataCache=void 0,this._iconCache.clear()}setConfig(t){this._config=t,this._render()}set hass(t){this._hass=t,this._render()}_render(){if(!this._config||!this._hass)return;const t=this._getEntityState(this._config.grid_entity),e=this._getEntityState(this._config.load_entity),i=this._getEntityState(this._config.production_entity),n=this._getEntityState(this._config.battery_entity),o=parseFloat(t?.state??"0")||0,a=parseFloat(e?.state??"0")||0,r=parseFloat(i?.state??"0")||0;let h=parseFloat(n?.state??"0")||0;this._config.invert_battery_data&&(h=-h);const s=this._config.view_mode||"default";if(this._lastViewMode==="chart"&&s!=="chart"&&(this._chartDataCache=void 0),s==="compact"||s==="compact-battery"){this._renderCompactView(o,a,r,h,s);return}if(s==="chart"){this._liveChartValues={grid:o,load:a,production:r,battery:h},this._lastViewMode!=="chart"||!this.querySelector(".chart-view")?this._renderChartView(o,a,r,h):this._throttledUpdateChartIndicators();return}const c=this._config.grid_min!=null?this._config.grid_min:-5e3,d=this._config.grid_max!=null?this._config.grid_max:5e3,g=this._config.load_max!=null?this._config.load_max:5e3,l=this._config.production_max!=null?this._config.production_max:5e3,b=this._config.battery_min!=null?this._config.battery_min:-5e3,x=this._config.battery_max!=null?this._config.battery_max:5e3;if(this.querySelector(".energy-flow-svg")){const u=this._meters.get("production"),m=this._meters.get("battery"),w=this._meters.get("grid"),S=this._meters.get("load");u&&(u.value=r),m&&(m.invertView=this._config.invert_battery_view??!1,m.value=h),w&&(w.value=o),S&&(S.value=a)}else{this._iconsExtracted=!1;const u=($,y)=>{this._fireEvent.call(this,$,y)},m=new U("production",r,0,l,!1,this._getDisplayName("production_name","production_entity","Production"),this._getIcon("production_icon","production_entity","mdi:solar-power"),"WATTS",!1,!1,this._config.production_tap_action,this._config.production_entity,u),w=new U("battery",h,b,x,!0,this._getDisplayName("battery_name","battery_entity","Battery"),this._getIcon("battery_icon","battery_entity","mdi:battery"),"WATTS",this._config.invert_battery_view,this._config.show_plus,this._config.battery_tap_action,this._config.battery_entity,u),S=new U("grid",o,c,d,!0,this._getDisplayName("grid_name","grid_entity","Grid"),this._getIcon("grid_icon","grid_entity","mdi:transmission-tower"),"WATTS",!1,!1,this._config.grid_tap_action,this._config.grid_entity,u),E=new U("load",a,0,g,!1,this._getDisplayName("load_name","load_entity","Load"),this._getIcon("load_icon","load_entity","mdi:home-lightning-bolt"),"WATTS",!1,!1,this._config.load_tap_action,this._config.load_entity,u);this.innerHTML=`
-        <ha-card>
-          <style>
-            :host {
-              display: block;
-              width: 100%;
-              height: 100%;
+    `;
+      const container = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      container.innerHTML = svgMarkup;
+      const element = container.firstElementChild;
+      this.element = element;
+      if (!this.tapAction || this.tapAction.action !== "none") {
+        element.style.cursor = "pointer";
+        element.addEventListener("click", (e) => {
+          this._handleTapAction();
+          e.stopPropagation();
+        });
+        element.addEventListener("mouseenter", () => {
+          element.style.filter = "brightness(1.1)";
+        });
+        element.addEventListener("mouseleave", () => {
+          element.style.filter = "";
+        });
+      }
+      return element;
+    }
+  }
+  class FlowLine {
+    constructor(group, flowId, from, to, power, color, speedMultiplier, dotsPerFlow) {
+      this.group = group;
+      this.flowId = flowId;
+      this.speedMultiplier = speedMultiplier;
+      this.dotsPerFlow = dotsPerFlow;
+      this.dots = [];
+      this.dotStates = [];
+      this.pathLength = 0;
+      const midX = (from.x + to.x) / 2;
+      const midY = (from.y + to.y) / 2;
+      this.pathData = `M ${from.x},${from.y} Q ${midX},${midY} ${to.x},${to.y}`;
+      const { opacity, strokeWidth, dotRadius } = this.calculateStyles(power);
+      const velocity = this.calculateVelocity(power);
+      this.glowPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      this.glowPath.setAttribute("d", this.pathData);
+      this.glowPath.setAttribute("class", "flow-line");
+      this.glowPath.setAttribute("stroke", color);
+      this.glowPath.setAttribute("stroke-opacity", String(opacity * 0.5));
+      this.glowPath.setAttribute("stroke-width", String(strokeWidth * 2));
+      this.glowPath.setAttribute("fill", "none");
+      this.glowPath.setAttribute("stroke-linecap", "round");
+      this.glowPath.setAttribute("style", "transition: stroke-opacity 0.5s ease-out, stroke-width 0.5s ease-out;");
+      this.glowPath.id = `glow-${flowId}`;
+      this.group.appendChild(this.glowPath);
+      this.mainPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      this.mainPath.setAttribute("d", this.pathData);
+      this.mainPath.setAttribute("class", "flow-line");
+      this.mainPath.setAttribute("stroke", color);
+      this.mainPath.setAttribute("stroke-opacity", String(opacity));
+      this.mainPath.setAttribute("stroke-width", String(strokeWidth));
+      this.mainPath.setAttribute("fill", "none");
+      this.mainPath.setAttribute("stroke-linecap", "round");
+      this.mainPath.setAttribute("style", "transition: stroke-opacity 0.5s ease-out, stroke-width 0.5s ease-out;");
+      this.mainPath.id = `path-${flowId}`;
+      this.group.appendChild(this.mainPath);
+      this.pathLength = this.mainPath.getTotalLength();
+      for (let i = 0; i < this.dotsPerFlow; i++) {
+        const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        dot.setAttribute("class", "flow-dot");
+        dot.setAttribute("id", `dot-${flowId}-${i}`);
+        dot.setAttribute("r", String(dotRadius));
+        dot.setAttribute("fill", color);
+        dot.setAttribute("opacity", String(opacity));
+        dot.setAttribute("style", "transition: opacity 0.5s ease-out, r 0.5s ease-out;");
+        this.group.appendChild(dot);
+        this.dots.push(dot);
+        const progress = i / this.dotsPerFlow;
+        this.dotStates.push({ progress, velocity });
+        const point = this.mainPath.getPointAtLength(progress * this.pathLength);
+        dot.setAttribute("cx", String(point.x));
+        dot.setAttribute("cy", String(point.y));
+      }
+    }
+    calculateStyles(power) {
+      let opacity;
+      if (power <= 100) {
+        opacity = 0.25;
+      } else if (power <= 200) {
+        opacity = 0.25 + (power - 100) / 100 * 0.75;
+      } else {
+        opacity = 1;
+      }
+      const minWidth = 2;
+      const maxWidth = 23.76;
+      const maxPower = 1e4;
+      let strokeWidth;
+      if (power <= 100) {
+        strokeWidth = minWidth;
+      } else {
+        const range = Math.min((power - 100) / (maxPower - 100), 1) * (maxWidth - minWidth);
+        strokeWidth = minWidth + range;
+      }
+      const baseDotRadius = 2.5;
+      const maxDotRadius = 3;
+      const scaledRadius = baseDotRadius * (strokeWidth / minWidth);
+      const dotRadius = Math.max(scaledRadius, maxDotRadius);
+      return { opacity, strokeWidth, dotRadius };
+    }
+    calculateVelocity(power) {
+      const baseSpeed = 40 * (power / 1e3) * this.speedMultiplier;
+      return this.pathLength > 0 ? baseSpeed / this.pathLength : 0;
+    }
+    update(power, color) {
+      const { opacity, strokeWidth, dotRadius } = this.calculateStyles(power);
+      const velocity = this.calculateVelocity(power);
+      this.glowPath.setAttribute("stroke", color);
+      this.glowPath.setAttribute("stroke-opacity", String(opacity * 0.5));
+      this.glowPath.setAttribute("stroke-width", String(strokeWidth * 2));
+      this.mainPath.setAttribute("stroke", color);
+      this.mainPath.setAttribute("stroke-opacity", String(opacity));
+      this.mainPath.setAttribute("stroke-width", String(strokeWidth));
+      this.dots.forEach((dot, i) => {
+        dot.setAttribute("r", String(dotRadius));
+        dot.setAttribute("opacity", String(opacity));
+        dot.setAttribute("fill", color);
+        this.dotStates[i].velocity = velocity;
+      });
+    }
+    animate(deltaTime) {
+      this.dotStates.forEach((state, i) => {
+        if (state.velocity > 0) {
+          state.progress += state.velocity * (deltaTime / 1e3);
+          if (state.progress >= 1) {
+            state.progress = state.progress % 1;
+          }
+          try {
+            if (this.pathLength > 0) {
+              const point = this.mainPath.getPointAtLength(state.progress * this.pathLength);
+              this.dots[i].setAttribute("cx", String(point.x));
+              this.dots[i].setAttribute("cy", String(point.y));
             }
-            ha-card {
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              width: 100%;
-              height: 100%;
-              padding: 8px;
-              box-sizing: border-box;
-              overflow: hidden;
-            }
-            .svg-wrapper {
-              width: 100%;
-              height: 100%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-            }
-            svg.energy-flow-svg {
-              display: block;
-              width: 100%;
-              height: 100%;
-            }
-            .flow-line {
-              fill: none;
-              stroke-linecap: round;
-            }
-            .flow-positive { stroke: var(--success-color, #4caf50); }
-            .flow-negative { stroke: var(--error-color, #f44336); }
-            .flow-dot {
-              offset-path: attr(data-path);
-              offset-distance: 0%;
-              animation: flow-move var(--flow-duration, 2s) linear infinite;
-            }
-            @keyframes flow-move {
-              from { offset-distance: 0%; }
-              to { offset-distance: 100%; }
-            }
-          </style>
-          <div class="svg-wrapper">
-            <svg class="energy-flow-svg" viewBox="0 0 ${this._canvasWidth} ${this._canvasHeight}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+          } catch (_e) {
+          }
+        }
+      });
+    }
+    fadeOut(callback) {
+      this.glowPath.setAttribute("stroke-opacity", "0");
+      this.mainPath.setAttribute("stroke-opacity", "0");
+      this.dots.forEach((dot) => dot.setAttribute("opacity", "0"));
+      setTimeout(callback, 500);
+    }
+  }
+  class FlowRenderer {
+    constructor(container, positions) {
+      this.container = container;
+      this.positions = positions;
+      this.flowLines = /* @__PURE__ */ new Map();
+      this.animationFrameId = null;
+      this.lastAnimationTime = null;
+      this.speedMultiplier = 0.8;
+      this.dotsPerFlow = 3;
+      this.animate = () => {
+        const now = performance.now();
+        const deltaTime = this.lastAnimationTime ? now - this.lastAnimationTime : 0;
+        this.lastAnimationTime = now;
+        this.flowLines.forEach((flowLine) => {
+          flowLine.animate(deltaTime);
+        });
+        this.animationFrameId = requestAnimationFrame(this.animate);
+      };
+    }
+    /**
+     * Update flows based on current power values
+     */
+    updateFlows(flows) {
+      const flowLayer = this.container.querySelector("#flow-layer");
+      if (!flowLayer) return;
+      const threshold = 0;
+      const batteryThreshold = 10;
+      this.updateOrCreateFlow(flowLayer, "production-to-load", this.positions.production, this.positions.load, flows.productionToLoad, "#4caf50", threshold);
+      this.updateOrCreateFlow(flowLayer, "production-to-battery", this.positions.production, this.positions.battery, flows.productionToBattery, "#4caf50", threshold);
+      this.updateOrCreateFlow(flowLayer, "battery-to-load", this.positions.battery, this.positions.load, flows.batteryToLoad, "#2196f3", batteryThreshold);
+      this.updateOrCreateFlow(flowLayer, "grid-to-load", this.positions.grid, this.positions.load, flows.gridToLoad, "#f44336", threshold);
+      this.updateOrCreateFlow(flowLayer, "grid-to-battery", this.positions.grid, this.positions.battery, flows.gridToBattery, "#f44336", threshold);
+      this.updateOrCreateFlow(flowLayer, "production-to-grid", this.positions.production, this.positions.grid, flows.productionToGrid, "#ffeb3b", threshold);
+    }
+    /**
+     * Start animation loop
+     */
+    start() {
+      if (this.animationFrameId) return;
+      this.lastAnimationTime = performance.now();
+      this.animate();
+    }
+    /**
+     * Stop animation loop
+     */
+    stop() {
+      if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+        this.lastAnimationTime = null;
+      }
+    }
+    /**
+     * Clear all flows
+     */
+    clear() {
+      this.stop();
+      this.flowLines.clear();
+      const flowLayer = this.container.querySelector("#flow-layer");
+      if (flowLayer) {
+        flowLayer.innerHTML = "";
+      }
+    }
+    updateOrCreateFlow(flowLayer, flowId, from, to, power, color, threshold) {
+      const existingFlowLine = this.flowLines.get(flowId);
+      if (power <= threshold) {
+        if (existingFlowLine) {
+          this.fadeOutFlow(flowLayer, flowId);
+        }
+        return;
+      }
+      if (!existingFlowLine) {
+        this.drawFlow(flowLayer, flowId, from, to, power, color);
+      } else {
+        existingFlowLine.update(power, color);
+      }
+    }
+    drawFlow(flowLayer, flowId, from, to, power, color) {
+      const flowGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      flowGroup.setAttribute("id", flowId);
+      flowLayer.appendChild(flowGroup);
+      const flowLine = new FlowLine(
+        flowGroup,
+        flowId,
+        from,
+        to,
+        power,
+        color,
+        this.speedMultiplier,
+        this.dotsPerFlow
+      );
+      this.flowLines.set(flowId, flowLine);
+    }
+    removeFlow(flowLayer, flowId) {
+      const flow = flowLayer.querySelector(`#${flowId}`);
+      if (flow) {
+        flow.remove();
+        this.flowLines.delete(flowId);
+      }
+    }
+    fadeOutFlow(flowLayer, flowId) {
+      const flowLine = this.flowLines.get(flowId);
+      if (!flowLine) return;
+      flowLine.fadeOut(() => {
+        this.removeFlow(flowLayer, flowId);
+      });
+    }
+  }
+  class DefaultRenderer {
+    constructor(container, config, hass, getDisplayNameCallback, getIconCallback, fireEventCallback) {
+      this.container = container;
+      this.config = config;
+      this.hass = hass;
+      this.getDisplayNameCallback = getDisplayNameCallback;
+      this.getIconCallback = getIconCallback;
+      this.fireEventCallback = fireEventCallback;
+      this.meters = /* @__PURE__ */ new Map();
+      this.iconsExtracted = false;
+      this.iconExtractionTimeouts = /* @__PURE__ */ new Set();
+      this.iconCache = /* @__PURE__ */ new Map();
+      this.canvasWidth = 500;
+      this.canvasHeight = 470;
+      const offsetX = 5;
+      const offsetY = 3;
+      this.meterPositions = {
+        production: { x: 60 + offsetX, y: 80 + offsetY },
+        battery: { x: 130 + offsetX, y: 240 + offsetY },
+        grid: { x: 60 + offsetX, y: 400 + offsetY },
+        load: { x: 360 + offsetX, y: 240 + offsetY }
+      };
+    }
+    /**
+     * Render the default view
+     */
+    render(data) {
+      const { grid, load, production, battery, flows } = data;
+      const gridMin = this.config.grid?.min ?? -5e3;
+      const gridMax = this.config.grid?.max ?? 5e3;
+      const loadMax = this.config.load.max ?? 5e3;
+      const productionMax = this.config.production?.max ?? 5e3;
+      const batteryMin = this.config.battery?.min ?? -5e3;
+      const batteryMax = this.config.battery?.max ?? 5e3;
+      if (!this.container.querySelector(".energy-flow-svg")) {
+        this.iconsExtracted = false;
+        this.initializeStructure(
+          grid,
+          load,
+          production,
+          battery,
+          gridMin,
+          gridMax,
+          loadMax,
+          productionMax,
+          batteryMin,
+          batteryMax
+        );
+        if (!this.iconsExtracted) {
+          requestAnimationFrame(() => {
+            this.extractIconPaths();
+          });
+        }
+      } else {
+        const productionMeter = this.meters.get("production");
+        const batteryMeter = this.meters.get("battery");
+        const gridMeter = this.meters.get("grid");
+        const loadMeter = this.meters.get("load");
+        if (productionMeter) productionMeter.value = production;
+        if (batteryMeter) {
+          batteryMeter.invertView = this.config.battery?.invert?.view ?? false;
+          batteryMeter.value = battery;
+        }
+        if (gridMeter) gridMeter.value = grid;
+        if (loadMeter) loadMeter.value = load;
+        if (!this.flowRenderer) {
+          const svg = this.container.querySelector(".energy-flow-svg");
+          if (svg) {
+            this.flowRenderer = new FlowRenderer(svg, this.meterPositions);
+            this.flowRenderer.start();
+          }
+        }
+      }
+      if (this.flowRenderer) {
+        this.flowRenderer.updateFlows(flows);
+      }
+    }
+    /**
+     * Stop animations and clean up
+     */
+    stop() {
+      if (this.flowRenderer) {
+        this.flowRenderer.stop();
+      }
+      this.meters.forEach((meter) => meter.stopAnimation());
+      this.iconExtractionTimeouts.forEach((id) => clearTimeout(id));
+      this.iconExtractionTimeouts.clear();
+    }
+    /**
+     * Clear all flows and stop animation
+     */
+    clear() {
+      this.stop();
+      if (this.flowRenderer) {
+        this.flowRenderer.clear();
+      }
+    }
+    /**
+     * Initialize the HTML structure and create Meter instances
+     */
+    initializeStructure(grid, load, production, battery, gridMin, gridMax, loadMax, productionMax, batteryMin, batteryMax) {
+      const productionMeter = new Meter(
+        "production",
+        production,
+        0,
+        productionMax,
+        false,
+        this.getDisplayNameCallback("production", "Production"),
+        this.getIconCallback("production", "mdi:solar-power"),
+        "WATTS",
+        false,
+        false,
+        this.config.production?.tap,
+        this.config.production?.entity,
+        this.fireEventCallback
+      );
+      const batteryMeter = new Meter(
+        "battery",
+        battery,
+        batteryMin,
+        batteryMax,
+        true,
+        this.getDisplayNameCallback("battery", "Battery"),
+        this.getIconCallback("battery", "mdi:battery"),
+        "WATTS",
+        this.config.battery?.invert?.view,
+        this.config.battery?.showPlus,
+        this.config.battery?.tap,
+        this.config.battery?.entity,
+        this.fireEventCallback
+      );
+      const gridMeter = new Meter(
+        "grid",
+        grid,
+        gridMin,
+        gridMax,
+        true,
+        this.getDisplayNameCallback("grid", "Grid"),
+        this.getIconCallback("grid", "mdi:transmission-tower"),
+        "WATTS",
+        false,
+        false,
+        this.config.grid?.tap,
+        this.config.grid?.entity,
+        this.fireEventCallback
+      );
+      const loadMeter = new Meter(
+        "load",
+        load,
+        0,
+        loadMax,
+        false,
+        this.getDisplayNameCallback("load", "Load"),
+        this.getIconCallback("load", "mdi:home-lightning-bolt"),
+        "WATTS",
+        false,
+        false,
+        this.config.load.tap,
+        this.config.load.entity,
+        this.fireEventCallback
+      );
+      this.container.innerHTML = `
+      <ha-card>
+        <style>
+          :host {
+            display: block;
+            width: 100%;
+            height: 100%;
+          }
+          ha-card {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            overflow: hidden;
+          }
+          .svg-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          svg.energy-flow-svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+          }
+          .flow-line {
+            fill: none;
+            stroke-linecap: round;
+          }
+          .flow-positive { stroke: var(--success-color, #4caf50); }
+          .flow-negative { stroke: var(--error-color, #f44336); }
+          .flow-dot {
+            offset-path: attr(data-path);
+            offset-distance: 0%;
+            animation: flow-move var(--flow-duration, 2s) linear infinite;
+          }
+          @keyframes flow-move {
+            from { offset-distance: 0%; }
+            to { offset-distance: 100%; }
+          }
+        </style>
+        <div class="svg-wrapper">
+          <svg class="energy-flow-svg" viewBox="0 0 ${this.canvasWidth} ${this.canvasHeight}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
             <defs>
-              ${this._createMeterDefs()}
+              ${this.createMeterDefs()}
             </defs>
             
             <!-- Flow lines layer (behind meters) -->
             <g id="flow-layer"></g>
             
             <!-- Production Meter (top left) -->
-            <g id="production-meter" class="meter-group" transform="translate(${this._meterPositions.production.x}, ${this._meterPositions.production.y})"></g>
+            <g id="production-meter" class="meter-group" transform="translate(${this.meterPositions.production.x}, ${this.meterPositions.production.y})"></g>
             
             <!-- Battery Meter (middle left, offset right) -->
-            <g id="battery-meter" class="meter-group" transform="translate(${this._meterPositions.battery.x}, ${this._meterPositions.battery.y})"></g>
+            <g id="battery-meter" class="meter-group" transform="translate(${this.meterPositions.battery.x}, ${this.meterPositions.battery.y})"></g>
             
             <!-- Grid Meter (bottom left) -->
-            <g id="grid-meter" class="meter-group" transform="translate(${this._meterPositions.grid.x}, ${this._meterPositions.grid.y})"></g>
+            <g id="grid-meter" class="meter-group" transform="translate(${this.meterPositions.grid.x}, ${this.meterPositions.grid.y})"></g>
             
             <!-- Load Meter (right, 2x size) -->
-            <g id="load-meter" class="meter-group" transform="translate(${this._meterPositions.load.x}, ${this._meterPositions.load.y}) scale(2)"></g>
+            <g id="load-meter" class="meter-group" transform="translate(${this.meterPositions.load.x}, ${this.meterPositions.load.y}) scale(2)"></g>
           </svg>
-          </div>
-        </ha-card>
-      `,requestAnimationFrame(()=>{const $=this.querySelector("#production-meter"),y=this.querySelector("#battery-meter"),p=this.querySelector("#grid-meter"),C=this.querySelector("#load-meter");$&&$.appendChild(m.createElement()),y&&y.appendChild(w.createElement()),p&&p.appendChild(S.createElement()),C&&C.appendChild(E.createElement()),this._meters.set("production",m),this._meters.set("battery",w),this._meters.set("grid",S),this._meters.set("load",E),m.startAnimation(),w.startAnimation(),S.startAnimation(),E.startAnimation(),m.updateDimming(),w.updateDimming(),S.updateDimming(),E.updateDimming()})}this._lastValues={grid:o,production:r,load:a,battery:h},this._animationFrameId||this._startFlowAnimationLoop(),this._iconsExtracted||requestAnimationFrame(()=>{this._extractIconPaths()}),requestAnimationFrame(()=>{requestAnimationFrame(()=>{this._drawFlows(o,r,a,h)})})}_getEntityState(t){return this._hass?.states?.[t]}_getDisplayName(t,e,i){if(this._config?.[t])return String(this._config[t]);const n=this._config?.[e];if(n){const o=this._getEntityState(n);if(o?.attributes?.friendly_name)return o.attributes.friendly_name}return i}_getIcon(t,e,i){if(this._config?.[t])return String(this._config[t]);const n=this._config?.[e];if(n){const o=this._getEntityState(n);if(o?.attributes?.icon)return o.attributes.icon}return i}_handleAction(t,e){if(!this._hass)return;const i=t||{action:"more-info"};switch(i.action||"more-info"){case"more-info":const o=i.entity||e;this._fireEvent("hass-more-info",{entityId:o});break;case"navigate":i.navigation_path&&(history.pushState(null,"",i.navigation_path),this._fireEvent("location-changed",{replace:i.navigation_replace||!1}));break;case"url":i.url_path&&window.open(i.url_path);break;case"toggle":this._hass.callService("homeassistant","toggle",{entity_id:e});break;case"perform-action":if(i.perform_action){const[a,r]=i.perform_action.split(".");this._hass.callService(a,r,i.data||{},i.target)}break;case"assist":this._fireEvent("show-dialog",{dialogTag:"ha-voice-command-dialog",dialogParams:{pipeline_id:i.pipeline_id||"last_used",start_listening:i.start_listening}});break}}_fireEvent(t,e={}){if(t==="call-service"&&this._hass){this._hass.callService(e.domain,e.service,e.service_data||{},e.target);return}const i=new CustomEvent(t,{detail:e,bubbles:!0,composed:!0});this.dispatchEvent(i)}_createMeterDefs(){return`
+        </div>
+      </ha-card>
+    `;
+      requestAnimationFrame(() => {
+        const productionContainer = this.container.querySelector("#production-meter");
+        const batteryContainer = this.container.querySelector("#battery-meter");
+        const gridContainer = this.container.querySelector("#grid-meter");
+        const loadContainer = this.container.querySelector("#load-meter");
+        if (productionContainer) productionContainer.appendChild(productionMeter.createElement());
+        if (batteryContainer) batteryContainer.appendChild(batteryMeter.createElement());
+        if (gridContainer) gridContainer.appendChild(gridMeter.createElement());
+        if (loadContainer) loadContainer.appendChild(loadMeter.createElement());
+        this.meters.set("production", productionMeter);
+        this.meters.set("battery", batteryMeter);
+        this.meters.set("grid", gridMeter);
+        this.meters.set("load", loadMeter);
+        productionMeter.startAnimation();
+        batteryMeter.startAnimation();
+        gridMeter.startAnimation();
+        loadMeter.startAnimation();
+        productionMeter.updateDimming();
+        batteryMeter.updateDimming();
+        gridMeter.updateDimming();
+        loadMeter.updateDimming();
+        const svg = this.container.querySelector(".energy-flow-svg");
+        if (svg && !this.flowRenderer) {
+          this.flowRenderer = new FlowRenderer(svg, this.meterPositions);
+          this.flowRenderer.start();
+        }
+      });
+    }
+    /**
+     * Create SVG filter definitions
+     */
+    createMeterDefs() {
+      return `
       <!-- Glow filter for flow lines -->
       <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
         <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
@@ -136,334 +1405,1225 @@
           <feMergeNode in="SourceGraphic" />
         </feMerge>
       </filter>
-    `}_calculateFlows(t,e,i,n){return Z({grid:t,production:e,load:i,battery:n})}_drawFlows(t,e,i,n){const o=this.querySelector("#flow-layer");if(!o)return;const a=this._meterPositions.production,r=this._meterPositions.battery,h=this._meterPositions.grid,s=this._meterPositions.load,{productionToLoad:c,productionToBattery:d,productionToGrid:g,gridToLoad:l,gridToBattery:b,batteryToLoad:x}=this._calculateFlows(t,e,i,n),u=0;[{id:"production-to-load",from:a,to:s,power:c,color:"#4caf50",threshold:u},{id:"production-to-battery",from:a,to:r,power:d,color:"#4caf50",threshold:u},{id:"battery-to-load",from:r,to:s,power:x,color:"#2196f3",threshold:10},{id:"grid-to-load",from:h,to:s,power:l,color:"#f44336",threshold:u},{id:"grid-to-battery",from:h,to:r,power:b,color:"#f44336",threshold:u},{id:"production-to-grid",from:a,to:h,power:g,color:"#ffeb3b",threshold:u}].forEach(S=>{S.power>S.threshold?this._updateOrCreateFlow(o,S.id,S.from,S.to,S.power,S.color):this._fadeOutFlow(o,S.id)})}_startFlowAnimationLoop(){const t=e=>{this._lastAnimationTime||(this._lastAnimationTime=e);const i=e-(this._lastAnimationTime??e);this._lastAnimationTime=e,this._flowDots.forEach((n,o)=>{const a=this.querySelector(`#path-${o}`);a&&n&&n.length>0&&n.forEach((r,h)=>{const s=this.querySelector(`#dot-${o}-${h}`);if(s&&r.velocity>0){r.progress+=r.velocity*i/1e3,r.progress>=1&&(r.progress=r.progress%1);try{const c=a.getTotalLength();if(c>0){const d=a.getPointAtLength(r.progress*c);s.setAttribute("cx",String(d.x)),s.setAttribute("cy",String(d.y))}}catch{}}})}),this._animationFrameId=requestAnimationFrame(t)};this._animationFrameId=requestAnimationFrame(t)}_updateOrCreateFlow(t,e,i,n,o,a){let r=t.querySelector(`#${e}`),h;o<=100?h=.25:o<=200?h=.25+(o-100)/100*.75:h=1;const s=2,c=23.76,d=1e4;let g;if(o<=100)g=s;else{const A=Math.min((o-100)/(d-100),1)*(c-s);g=s+A}const l=2.5,b=3,x=l*(g/s),u=Math.max(x,b),m=document.createElementNS("http://www.w3.org/2000/svg","path"),w=(i.x+n.x)/2,S=(i.y+n.y)/2,E=`M ${i.x},${i.y} Q ${w},${S} ${n.x},${n.y}`;m.setAttribute("d",E);const $=m.getTotalLength(),C=40*(o/1e3)*this._speedMultiplier,D=$>0?C/$:0;if(r){const A=r.querySelector(`#glow-${e}`),M=r.querySelector(`#path-${e}`);if(A&&M){const L=(i.x+n.x)/2,f=(i.y+n.y)/2,T=`M ${i.x},${i.y} Q ${L},${f} ${n.x},${n.y}`;A.setAttribute("d",T),A.setAttribute("stroke-opacity",String(h*.5)),A.setAttribute("stroke-width",String(g*2)),M.setAttribute("d",T),M.setAttribute("stroke-opacity",String(h)),M.setAttribute("stroke-width",String(g))}const F=this._flowDots.get(e);F&&F.forEach((L,f)=>{const T=r.querySelector(`#dot-${e}-${f}`);T&&(T.setAttribute("r",String(u)),T.setAttribute("opacity",String(h)),T.setAttribute("fill",a)),L.velocity=D})}else{r=document.createElementNS("http://www.w3.org/2000/svg","g"),r.id=e,t.appendChild(r);const A=document.createElementNS("http://www.w3.org/2000/svg","path");A.setAttribute("d",E),A.setAttribute("class","flow-line"),A.setAttribute("stroke",a),A.setAttribute("stroke-opacity",String(h*.5)),A.setAttribute("stroke-width",String(g*2)),A.setAttribute("style","transition: stroke-opacity 0.5s ease-out, stroke-width 0.5s ease-out;"),A.id=`glow-${e}`,r.appendChild(A);const M=document.createElementNS("http://www.w3.org/2000/svg","path");M.setAttribute("d",E),M.setAttribute("class","flow-line"),M.setAttribute("stroke",a),M.setAttribute("stroke-opacity",String(h)),M.setAttribute("stroke-width",String(g)),M.setAttribute("style","transition: stroke-opacity 0.5s ease-out, stroke-width 0.5s ease-out;"),M.id=`path-${e}`,r.appendChild(M);const F=[];for(let L=0;L<this._dotsPerFlow;L++){const f=document.createElementNS("http://www.w3.org/2000/svg","circle");f.setAttribute("class","flow-dot"),f.setAttribute("id",`dot-${e}-${L}`),f.setAttribute("r",String(u)),f.setAttribute("fill",a),f.setAttribute("opacity",String(h)),f.setAttribute("style","transition: opacity 0.5s ease-out, r 0.5s ease-out;"),r.appendChild(f);const T=L/this._dotsPerFlow;F.push({progress:T,velocity:D})}this._flowDots.set(e,F)}}_removeFlow(t,e){const i=t.querySelector(`#${e}`);i&&i.remove(),this._flowDots.delete(e)}_fadeOutFlow(t,e){const i=t.querySelector(`#${e}`);if(!i)return;const n=i.querySelector(`#glow-${e}`),o=i.querySelector(`#path-${e}`);n&&n.setAttribute("stroke-opacity","0"),o&&o.setAttribute("stroke-opacity","0");const a=this._flowDots.get(e);a&&a.forEach((r,h)=>{const s=i.querySelector(`#dot-${e}-${h}`);s&&s.setAttribute("opacity","0")}),setTimeout(()=>{this._removeFlow(t,e)},500)}_extractIconPaths(){["production","battery","grid","load"].forEach(e=>{const i=this.querySelector(`#icon-source-${e}`),n=this.querySelector(`#icon-display-${e}`);if(!i||!n){console.warn(`Icon elements not found for ${e}`);return}const o=i.querySelector("div");if(!o){console.warn(`No div found in foreignObject for ${e}`);return}const a=o.querySelector("ha-icon");if(!a){console.warn(`No ha-icon found for ${e}`);return}const r=a.getAttribute("icon");if(!r){console.warn(`No icon attribute for ${e}`);return}if(this._iconCache.has(r)){const s=this._iconCache.get(r);this._renderIconPath(n,s),i.style.display="none";return}const h=(s=0,c=10)=>{const d=s*100,g=window.setTimeout(()=>{this._iconExtractionTimeouts.delete(g);try{const l=a.shadowRoot;if(!l){s<c&&h(s+1,c);return}let b=l.querySelector("svg");if(!b){const m=l.querySelector("ha-svg-icon");m&&m.shadowRoot&&(b=m.shadowRoot.querySelector("svg"))}if(!b){s<c&&h(s+1,c);return}const x=b.querySelector("path");if(!x){s<c&&h(s+1,c);return}const u=x.getAttribute("d");u?(this._iconCache.set(r,u),this._renderIconPath(n,u),i.style.display="none"):s<c&&h(s+1,c)}catch(l){console.error(`Failed to extract icon path for ${r} (attempt ${s+1}):`,l),s<c&&h(s+1,c)}},d);this._iconExtractionTimeouts.add(g)};h()}),this._iconsExtracted=!0}_renderIconPath(t,e){if(t.innerHTML="",e){const i=document.createElementNS("http://www.w3.org/2000/svg","path");i.setAttribute("d",e),i.setAttribute("fill","rgb(160, 160, 160)"),i.setAttribute("transform","scale(1)"),t.appendChild(i)}else{const i=document.createElementNS("http://www.w3.org/2000/svg","circle");i.setAttribute("cx","12"),i.setAttribute("cy","12"),i.setAttribute("r","8"),i.setAttribute("fill","rgb(160, 160, 160)"),t.appendChild(i)}}_drawFlow(t,e,i,n,o){const a=document.createElementNS("http://www.w3.org/2000/svg","path"),r=(e.x+i.x)/2,h=(e.y+i.y)/2,s=`M ${e.x},${e.y} Q ${r},${h} ${i.x},${i.y}`;a.setAttribute("d",s),a.setAttribute("class",`flow-line ${o?"flow-positive":"flow-negative"}`),a.setAttribute("id",`path-${Math.random()}`),t.appendChild(a);const c=Math.min(Math.max(Math.floor(n/1e3),1),3);for(let d=0;d<c;d++){const g=document.createElementNS("http://www.w3.org/2000/svg","circle");g.setAttribute("class",`flow-dot ${o?"flow-positive":"flow-negative"}`),g.setAttribute("r","3"),g.setAttribute("fill",o?"var(--success-color, #4caf50)":"var(--error-color, #f44336)");const l=document.createElementNS("http://www.w3.org/2000/svg","animateMotion");l.setAttribute("dur","2s"),l.setAttribute("repeatCount","indefinite"),l.setAttribute("begin",`${d*.6}s`);const b=document.createElementNS("http://www.w3.org/2000/svg","mpath");b.setAttributeNS("http://www.w3.org/1999/xlink","href",`#${a.id}`),l.appendChild(b),g.appendChild(l),t.appendChild(g)}}_renderCompactView(t,e,i,n,o){const a=this._calculateFlows(t,i,e,n),r=a.productionToLoad,h=a.batteryToLoad,s=a.gridToLoad,c=e||1,d=r/c*100,g=h/c*100,l=s/c*100,b=d+g+l;let x=d,u=g,m=l;if(b>0){const _=100/b;x=d*_,u=g*_,m=l*_}const w="#256028",S="#104b79",E="#7a211b",$="#7a6b1b";let y=null;if(o==="compact-battery"&&this._config?.battery_soc_entity){const _=this._getEntityState(this._config.battery_soc_entity);y=parseFloat(_?.state??"0")||0}let p=0,C=0,D=0,A=0,M=0,F=0,L=0,f=0,T=0;if(o==="compact-battery"){if(n<0){const k=Math.abs(n)||1;A=a.gridToBattery,F=a.productionToBattery,p=a.gridToBattery/k*100,D=a.productionToBattery/k*100;const I=p+D;if(I>0){const W=100/I;L=p*W,T=D*W}}else if(n>0){const _=n||1,k=n-a.batteryToLoad;M=a.batteryToLoad,A=k,C=a.batteryToLoad/_*100,p=k/_*100;const I=C+p;if(I>0){const W=100/I;f=C*W,L=p*W}}}(!this.querySelector(".compact-view")||this._lastViewMode!==o)&&(this.innerHTML=`
-        <ha-card>
-          <style>
-            :host {
-              display: block;
-              width: 100%;
-              height: 100%;
+    `;
+    }
+    /**
+     * Extract icon paths from ha-icon elements
+     */
+    extractIconPaths() {
+      const meterIds = ["production", "battery", "grid", "load"];
+      meterIds.forEach(async (meterId) => {
+        const iconContainer = this.container.querySelector(`#icon-${meterId}`);
+        const iconSource = this.container.querySelector(`#ha-icon-${meterId}`);
+        if (iconContainer && iconSource) {
+          const iconName = iconSource.getAttribute("icon") || "unknown";
+          const cachedPath = this.iconCache.get(iconName);
+          if (cachedPath) {
+            this.renderIconPath(iconContainer, cachedPath);
+            return;
+          }
+          const pathData = await this.extractIconPath(iconSource, iconName);
+          this.renderIconPath(iconContainer, pathData);
+        }
+      });
+      this.iconsExtracted = true;
+    }
+    /**
+     * Extract SVG path from ha-icon element
+     */
+    async extractIconPath(iconElement, iconName, maxAttempts = 10) {
+      return new Promise((resolve) => {
+        const attemptExtraction = (attempt = 1, max = maxAttempts) => {
+          const delay = attempt === 1 ? 0 : 100 * attempt;
+          const timeoutId = window.setTimeout(async () => {
+            try {
+              const shadowRoot = iconElement.shadowRoot;
+              if (!shadowRoot) {
+                if (attempt < max) {
+                  attemptExtraction(attempt + 1, max);
+                } else {
+                  resolve(null);
+                }
+                return;
+              }
+              const svg = shadowRoot.querySelector("svg");
+              if (!svg) {
+                if (attempt < max) {
+                  attemptExtraction(attempt + 1, max);
+                } else {
+                  resolve(null);
+                }
+                return;
+              }
+              const path = svg.querySelector("path");
+              if (path) {
+                const pathData = path.getAttribute("d");
+                if (pathData && this.iconCache) {
+                  this.iconCache.set(iconName, pathData);
+                }
+                resolve(pathData);
+              } else {
+                if (attempt < max) {
+                  attemptExtraction(attempt + 1, max);
+                } else {
+                  resolve(null);
+                }
+              }
+            } catch (e) {
+              console.error(`Failed to extract icon path for ${iconName} (attempt ${attempt}):`, e);
+              if (attempt < max) {
+                attemptExtraction(attempt + 1, max);
+              } else {
+                resolve(null);
+              }
             }
-            ha-card {
-              padding: 16px;
-              box-sizing: border-box;
-              width: 100%;
-              height: 100%;
-              display: flex;
-              flex-direction: column;
-              justify-content: center;
-            }
-            .compact-view {
-              display: flex;
-              flex-direction: column;
-              gap: ${o==="compact-battery"?"12px":"0"};
-              width: 100%;
-            }
-            .compact-row {
-              display: flex;
-              align-items: center;
-              gap: 12px;
-              width: 100%;
-            }
-            .bar-container {
-              flex: 1;
-              height: 60px;
-              background: rgb(40, 40, 40);
-              border-radius: 8px;
-              overflow: hidden;
-              display: flex;
-              position: relative;
-            }
-            .bar-segment {
-              height: 100%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              gap: 6px;
-              font-size: 14px;
-              font-weight: 600;
-              color: rgb(255, 255, 255);
-              transition: width 0.5s ease-out;
-              position: relative;
-              overflow: hidden;
-              cursor: pointer;
-            }
-            .bar-segment:hover {
-              filter: brightness(1.2);
-            }
-            .bar-segment-content {
-              display: flex;
-              align-items: center;
-              gap: 6px;
-              white-space: nowrap;
-            }
-            .bar-segment-icon {
-              width: 24px;
-              height: 24px;
-              flex-shrink: 0;
-              opacity: 1;
-              color: rgb(255, 255, 255);
-            }
-            .bar-segment-label {
-              text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-            }
-            .bar-segment[data-width-px] .bar-segment-label {
-              display: none;
-            }
-            .bar-segment[data-width-px="show-label"] .bar-segment-label {
-              display: inline;
-            }
-            .bar-segment[data-width-px] .bar-segment-icon {
-              display: none;
-            }
-            .bar-segment[data-width-px="show-icon"] .bar-segment-icon,
-            .bar-segment[data-width-px="show-label"] .bar-segment-icon {
-              display: block;
-            }
-            .row-value {
-              font-size: 24px;
-              font-weight: 600;
-              color: rgb(255, 255, 255);
-              white-space: nowrap;
-              min-width: 100px;
-              text-align: right;
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              cursor: pointer;
-            }
-            .row-value:hover {
-              filter: brightness(1.1);
-            }
-            .row-value.battery-discharge {
-              text-align: left;
-              flex-direction: row-reverse;
-            }
-            .row-icon {
-              width: 28px;
-              height: 28px;
-              flex-shrink: 0;
-              color: rgb(160, 160, 160);
-              display: flex;
-              align-items: center;
-            }
-            .row-text {
-              display: flex;
-              align-items: baseline;
-              gap: 4px;
-              line-height: 1;
-            }
-            .row-unit {
-              font-size: 14px;
-              color: rgb(160, 160, 160);
-              margin-left: 4px;
-            }
-          </style>
-          <div class="compact-view">
-            <!-- Load Row -->
-            <div class="compact-row">
-              <div class="bar-container">
-                <div id="grid-segment" class="bar-segment" style="background: ${E}; width: ${l}%;">
-                  <div class="bar-segment-content">
-                    <ha-icon class="bar-segment-icon" icon="${this._getIcon("grid_icon","grid_entity","mdi:transmission-tower")}"></ha-icon>
-                    <span class="bar-segment-label"></span>
-                  </div>
-                </div>
-                <div id="battery-segment" class="bar-segment" style="background: ${S}; width: ${g}%;">
-                  <div class="bar-segment-content">
-                    <ha-icon class="bar-segment-icon" icon="${this._getIcon("battery_icon","battery_entity","mdi:battery")}"></ha-icon>
-                    <span class="bar-segment-label"></span>
-                  </div>
-                </div>
-                <div id="production-segment" class="bar-segment" style="background: ${w}; width: ${d}%;">
-                  <div class="bar-segment-content">
-                    <ha-icon class="bar-segment-icon" icon="${this._getIcon("production_icon","production_entity","mdi:solar-power")}"></ha-icon>
-                    <span class="bar-segment-label"></span>
-                  </div>
-                </div>
-              </div>
-              <div class="row-value">
-                <ha-icon class="row-icon" icon="${this._getIcon("load_icon","load_entity","mdi:home-lightning-bolt")}"></ha-icon>
-                <div class="row-text">
-                  <span id="load-value-text">${Math.round(e)}</span><span class="row-unit">W</span>
-                </div>
-              </div>
-            </div>
-            ${o==="compact-battery"?`
-            <!-- Battery Row -->
-            <div class="compact-row" id="battery-row">
-              <div class="row-value" id="battery-soc-left" style="display: none;">
-                <ha-icon class="row-icon" icon="${this._getIcon("battery_icon","battery_entity","mdi:battery")}"></ha-icon>
-                <div class="row-text">
-                  <span id="battery-soc-text-left">${y!==null?y.toFixed(1):"--"}</span><span class="row-unit">%</span>
-                </div>
-              </div>
-              <div class="bar-container">
-                <!-- Color order: red, yellow, blue, green (left to right) -->
-                <div id="battery-grid-segment" class="bar-segment" style="background: ${n<0?E:$}; width: ${p}%;">
-                  <div class="bar-segment-content">
-                    <ha-icon class="bar-segment-icon" icon="${this._getIcon("grid_icon","grid_entity","mdi:transmission-tower")}"></ha-icon>
-                    <span class="bar-segment-label"></span>
-                  </div>
-                </div>
-                <div id="battery-load-segment" class="bar-segment" style="background: ${S}; width: ${C}%;">
-                  <div class="bar-segment-content">
-                    <ha-icon class="bar-segment-icon" icon="${this._getIcon("load_icon","load_entity","mdi:home")}"></ha-icon>
-                    <span class="bar-segment-label"></span>
-                  </div>
-                </div>
-                <div id="battery-production-segment" class="bar-segment" style="background: ${w}; width: ${D}%;">
-                  <div class="bar-segment-content">
-                    <ha-icon class="bar-segment-icon" icon="${this._getIcon("production_icon","production_entity","mdi:solar-power")}"></ha-icon>
-                    <span class="bar-segment-label"></span>
-                  </div>
-                </div>
-              </div>
-              <div class="row-value" id="battery-soc-right">
-                <ha-icon class="row-icon" icon="${this._getIcon("battery_icon","battery_entity","mdi:battery")}"></ha-icon>
-                <div class="row-text">
-                  <span id="battery-soc-text-right">${y!==null?y.toFixed(1):"--"}</span><span class="row-unit">%</span>
-                </div>
-              </div>
-            </div>
-            `:""}
+          }, delay);
+          this.iconExtractionTimeouts.add(timeoutId);
+        };
+        attemptExtraction();
+      });
+    }
+    /**
+     * Render an icon path in a container
+     */
+    renderIconPath(container, pathData) {
+      container.innerHTML = "";
+      if (pathData) {
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("fill", "rgb(160, 160, 160)");
+        path.setAttribute("transform", "scale(1)");
+        container.appendChild(path);
+      } else {
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", "12");
+        circle.setAttribute("cy", "12");
+        circle.setAttribute("r", "8");
+        circle.setAttribute("fill", "rgb(160, 160, 160)");
+        container.appendChild(circle);
+      }
+    }
+  }
+  function createGridLines(chartWidth, chartHeight, margin) {
+    const lines = [];
+    const numLines = 4;
+    for (let i = 0; i <= numLines; i++) {
+      const y = margin.top + i * chartHeight / numLines;
+      lines.push(`<line x1="${margin.left}" y1="${y}" x2="${margin.left + chartWidth}" y2="${y}" stroke="white" stroke-width="1" />`);
+    }
+    return lines.join("\n");
+  }
+  function createTimeLabels(chartWidth, chartHeight, margin, hoursToShow) {
+    const labels = [];
+    const numLabels = 6;
+    const now = /* @__PURE__ */ new Date();
+    for (let i = 0; i <= numLabels; i++) {
+      const hoursAgo = hoursToShow - i * hoursToShow / numLabels;
+      const time = new Date(now.getTime() - hoursAgo * 60 * 60 * 1e3);
+      const currentMinutes = time.getMinutes();
+      const quantizedMinutes = currentMinutes < 15 ? 0 : currentMinutes < 45 ? 30 : 0;
+      const hourAdjust = currentMinutes >= 45 ? 1 : 0;
+      time.setMinutes(quantizedMinutes);
+      time.setSeconds(0);
+      time.setMilliseconds(0);
+      if (hourAdjust) {
+        time.setHours(time.getHours() + hourAdjust);
+      }
+      const x = margin.left + i * chartWidth / numLabels;
+      const y = margin.top + chartHeight + 20;
+      const hours = time.getHours();
+      const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+      const ampm = hours >= 12 ? "PM" : "AM";
+      labels.push(`
+      <text x="${x}" y="${y}" text-anchor="middle" fill="rgb(160, 160, 160)" font-size="11">
+        ${hours12} ${ampm}
+      </text>
+    `);
+    }
+    return labels.join("\n");
+  }
+  function createYAxisLabels(supplyHeight, demandHeight, margin, maxSupply, maxDemand, zeroLineY) {
+    const labels = [];
+    labels.push(`<text x="${margin.left - 10}" y="${margin.top + 5}" text-anchor="end" fill="rgb(160, 160, 160)" font-size="11">${Math.round(maxSupply)}W</text>`);
+    labels.push(`<text x="${margin.left - 10}" y="${zeroLineY + 5}" text-anchor="end" fill="rgb(160, 160, 160)" font-size="11">0</text>`);
+    labels.push(`<text x="${margin.left - 10}" y="${zeroLineY + demandHeight + 5}" text-anchor="end" fill="rgb(160, 160, 160)" font-size="11">-${Math.round(maxDemand)}W</text>`);
+    return labels.join("\n");
+  }
+  function createAreaPath(dataPoints, xStep, centerY, yScale, margin, valueGetter, baseValueGetter, direction) {
+    const points = [];
+    const basePoints = [];
+    let hasData = false;
+    dataPoints.forEach((d, i) => {
+      const x = margin.left + i * xStep;
+      const value = valueGetter(d);
+      const baseValue = typeof baseValueGetter === "function" ? baseValueGetter(d) : baseValueGetter;
+      if (value > 0) hasData = true;
+      const yOffset = direction === "down" ? -(value + baseValue) * yScale : (value + baseValue) * yScale;
+      const baseYOffset = direction === "down" ? -baseValue * yScale : baseValue * yScale;
+      points.push({ x, y: centerY + yOffset });
+      basePoints.push({ x, y: centerY + baseYOffset });
+    });
+    if (!hasData) return null;
+    let path = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      path += ` L ${points[i].x} ${points[i].y}`;
+    }
+    for (let i = basePoints.length - 1; i >= 0; i--) {
+      path += ` L ${basePoints[i].x} ${basePoints[i].y}`;
+    }
+    path += " Z";
+    return path;
+  }
+  function createLoadLine(dataPoints, chartWidth, chartHeight, yScale, margin, zeroLineY) {
+    if (!dataPoints || dataPoints.length === 0) return "";
+    const xStep = dataPoints.length > 1 ? chartWidth / (dataPoints.length - 1) : 0;
+    const pathPoints = dataPoints.map((d, i) => {
+      const x = margin.left + i * xStep;
+      const y = zeroLineY - d.load * yScale;
+      return `${i === 0 ? "M" : "L"} ${x},${y}`;
+    }).join(" ");
+    return `<path d="${pathPoints}" fill="none" stroke="#CCCCCC" stroke-width="3" opacity="0.9" />`;
+  }
+  class ChartRenderer {
+    constructor(hass, config, fireEvent) {
+      this.iconCache = /* @__PURE__ */ new Map();
+      this.chartRenderPending = false;
+      this.lastIndicatorUpdate = 0;
+      this.hass = hass;
+      this.config = config;
+      this.fireEvent = fireEvent;
+    }
+    /**
+     * Update live chart values for indicators
+     */
+    updateLiveValues(values) {
+      this.liveChartValues = values;
+    }
+    /**
+     * Render chart view (main entry point)
+     */
+    render(container) {
+      if (!container.querySelector(".chart-view")) {
+        this.initializeChartStructure(container);
+      } else if (this.liveChartValues) {
+        this.throttledUpdateChartIndicators(container);
+      }
+    }
+    /**
+     * Initialize chart HTML structure
+     */
+    initializeChartStructure(container) {
+      container.innerHTML = `
+      <ha-card>
+        <style>
+          :host {
+            display: block;
+            width: 100%;
+            height: 100%;
+          }
+          ha-card {
+            padding: 0;
+            box-sizing: border-box;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+          }
+          .chart-view {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            flex: 1;
+            min-height: 0;
+          }
+          .chart-container {
+            flex: 1;
+            position: relative;
+            min-height: 200px;
+            overflow: hidden;
+          }
+          svg.chart-svg {
+            width: 100%;
+            height: 100%;
+          }
+          .loading-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgb(160, 160, 160);
+            font-size: 14px;
+          }
+        </style>
+        <div class="chart-view">
+          <div class="chart-container">
+            <div class="loading-message">Loading history data...</div>
+            <svg class="chart-svg" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet">
+              <!-- Chart will be rendered here -->
+            </svg>
           </div>
-        </ha-card>
-      `,this._lastViewMode=o,requestAnimationFrame(()=>{if(this._config){const _=this.querySelector("#production-segment"),k=this.querySelector("#battery-segment"),I=this.querySelector("#grid-segment"),q=this.querySelectorAll(".row-value")[0];if(_&&_.addEventListener("click",()=>{this._handleAction(this._config.production_tap_action,this._config.production_entity)}),k&&k.addEventListener("click",()=>{this._handleAction(this._config.battery_tap_action,this._config.battery_entity)}),I&&I.addEventListener("click",()=>{this._handleAction(this._config.grid_tap_action,this._config.grid_entity)}),q&&q.addEventListener("click",()=>{this._handleAction(this._config.load_tap_action,this._config.load_entity)}),o==="compact-battery"){const v=this.querySelector("#battery-production-segment"),P=this.querySelector("#battery-load-segment"),H=this.querySelector("#battery-grid-segment"),R=this.querySelector("#battery-soc-left"),V=this.querySelector("#battery-soc-right");v&&v.addEventListener("click",()=>{this._handleAction(this._config.production_tap_action,this._config.production_entity)}),P&&P.addEventListener("click",()=>{this._handleAction(this._config.load_tap_action,this._config.load_entity)}),H&&H.addEventListener("click",()=>{this._handleAction(this._config.grid_tap_action,this._config.grid_entity)}),R&&R.addEventListener("click",()=>{this._handleAction(this._config.battery_tap_action,this._config.battery_entity)}),V&&V.addEventListener("click",()=>{this._handleAction(this._config.battery_tap_action,this._config.battery_entity)})}}})),requestAnimationFrame(()=>{const _=this.querySelector("#production-segment"),k=this.querySelector("#battery-segment"),I=this.querySelector("#grid-segment"),W=this.querySelector("#load-value-text");if(_){_.style.width=`${x}%`;const q=_.querySelector(".bar-segment-label");q&&r>0&&(q.textContent=`${Math.round(d)}%`);const v=this.querySelector(".bar-container"),P=x/100*(v?.clientWidth||0);this._updateSegmentVisibility(_,P,r>0)}if(k){k.style.width=`${u}%`;const q=k.querySelector(".bar-segment-label");q&&h>0&&(q.textContent=`${Math.round(g)}%`);const v=this.querySelector(".bar-container"),P=u/100*(v?.clientWidth||0);this._updateSegmentVisibility(k,P,h>0)}if(I){I.style.width=`${m}%`;const q=I.querySelector(".bar-segment-label");q&&s>0&&(q.textContent=`${Math.round(l)}%`);const v=this.querySelector(".bar-container"),P=m/100*(v?.clientWidth||0);this._updateSegmentVisibility(I,P,s>0)}if(W&&(W.textContent=String(Math.round(e))),o==="compact-battery"){const q=this.querySelector("#battery-grid-segment"),v=this.querySelector("#battery-load-segment"),P=this.querySelector("#battery-production-segment"),H=this.querySelector("#battery-soc-left"),R=this.querySelector("#battery-soc-right"),V=this.querySelector("#battery-soc-text-left"),O=this.querySelector("#battery-soc-text-right"),X=this.querySelectorAll(".bar-container")[1];let j=!1;if(n<0?(j=!0,H&&(H.style.display="none"),R&&(R.style.display="flex"),O&&y!==null&&(O.textContent=y.toFixed(1))):n>0?(j=!1,H&&(H.style.display="flex"),R&&(R.style.display="none"),V&&y!==null&&(V.textContent=y.toFixed(1))):(H&&(H.style.display="none"),R&&(R.style.display="flex"),O&&y!==null&&(O.textContent=y.toFixed(1))),q){const B=j?"#7a211b":"#7a6b1b";q.style.width=`${L}%`,q.style.background=B;const z=q.querySelector(".bar-segment-label");z&&A>0&&(z.textContent=`${Math.round(A)}W`);const N=L/100*(X?.offsetWidth||0);this._updateSegmentVisibility(q,N,A>0)}if(v){v.style.width=`${f}%`;const B=v.querySelector(".bar-segment-label");B&&M>0&&(B.textContent=`${Math.round(M)}W`);const z=f/100*(X?.offsetWidth||0);this._updateSegmentVisibility(v,z,M>0)}if(P){P.style.width=`${T}%`;const B=P.querySelector(".bar-segment-label");B&&F>0&&(B.textContent=`${Math.round(F)}W`);const z=T/100*(X?.offsetWidth||0);this._updateSegmentVisibility(P,z,F>0)}}})}async _renderChartView(t,e,i,n){(!this.querySelector(".chart-view")||this._lastViewMode!=="chart")&&(this.innerHTML=`
-        <ha-card>
-          <style>
-            :host {
-              display: block;
-              width: 100%;
-              height: 100%;
-            }
-            ha-card {
-              padding: 0;
-              box-sizing: border-box;
-              width: 100%;
-              height: 100%;
-              display: flex;
-              flex-direction: column;
-            }
-            .chart-view {
-              display: flex;
-              flex-direction: column;
-              width: 100%;
-              flex: 1;
-              min-height: 0;
-            }
-            .chart-container {
-              flex: 1;
-              position: relative;
-              min-height: 200px;
-              overflow: hidden;
-            }
-            svg.chart-svg {
-              width: 100%;
-              height: 100%;
-            }
-            .loading-message {
-              position: absolute;
-              top: 50%;
-              left: 50%;
-              transform: translate(-50%, -50%);
-              color: rgb(160, 160, 160);
-              font-size: 14px;
-            }
-          </style>
-          <div class="chart-view">
-            <div class="chart-container">
-              <div class="loading-message">Loading history data...</div>
-              <svg class="chart-svg" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet">
-                <!-- Chart will be rendered here -->
-              </svg>
-            </div>
-          </div>
-        </ha-card>
-      `,this._lastViewMode="chart"),this._liveChartValues={grid:t,load:e,production:i,battery:n},setTimeout(()=>{this._fetchAndRenderChartData()},100)}async _fetchAndRenderChartData(){if(!this._hass||!this._config||this._chartRenderPending)return;const t=12,e=Date.now(),i=this._chartDataCache?e-this._chartDataCache.timestamp:1/0,n=300*1e3;if(this._chartDataCache&&i>=n&&(this._chartDataCache=void 0),this._chartDataCache&&i<n){requestAnimationFrame(()=>{this._renderChartFromCache()});return}this._chartRenderPending=!0;const o=new Date,a=new Date(o.getTime()-t*60*60*1e3);try{const[r,h,s,c]=await Promise.all([this._fetchHistory(this._config.production_entity,a,o),this._fetchHistory(this._config.grid_entity,a,o),this._fetchHistory(this._config.load_entity,a,o),this._fetchHistory(this._config.battery_entity,a,o)]),d=()=>{this._drawStackedAreaChart(r,h,s,c,t),this._chartRenderPending=!1;const g=this.querySelector(".loading-message");g&&g.remove()};"requestIdleCallback"in window?requestIdleCallback(d,{timeout:2e3}):setTimeout(d,0)}catch(r){console.error("Error fetching chart data:",r),this._chartRenderPending=!1;const h=this.querySelector(".chart-svg");h&&(h.innerHTML=`
-          <text x="400" y="200" text-anchor="middle" fill="rgb(160, 160, 160)" font-size="14">
-            Error loading chart data
-          </text>
-        `)}}_renderChartFromCache(){if(!this._chartDataCache)return;const t=this.querySelector(".chart-svg");if(!t)return;const e=this._chartDataCache.dataPoints,i=Math.max(...e.map(p=>p.solar+p.batteryDischarge+p.gridImport),...e.map(p=>p.load)),n=Math.max(...e.map(p=>p.batteryCharge+p.gridExport)),o=i+n,a=o>0?i/o:.5,r=o>0?n/o:.5,h=800,s=400,c={top:20,right:150,bottom:40,left:60},d=h-c.left-c.right,g=s-c.top-c.bottom,l=g*a,b=g*r,x=i>0?l/(i*1.1):1,u=n>0?b/(n*1.1):1,m=c.top+l,w=this._createStackedPaths(e,d,l,x,c,"supply",m),S=this._createStackedPaths(e,d,b,u,c,"demand",m),E=this._createLoadLine(e,d,l,x,c,m);let $=`
+        </div>
+      </ha-card>
+    `;
+      const svg = container.querySelector(".chart-svg");
+      if (svg) {
+        setTimeout(() => {
+          this.fetchAndRenderChart(svg, 12);
+        }, 100);
+      }
+    }
+    /**
+     * Throttle chart indicator updates
+     */
+    throttledUpdateChartIndicators(container) {
+      if (this.indicatorUpdateTimeout) {
+        clearTimeout(this.indicatorUpdateTimeout);
+        this.indicatorUpdateTimeout = void 0;
+      }
+      const now = Date.now();
+      const timeSinceLastUpdate = now - this.lastIndicatorUpdate;
+      const minUpdateInterval = 250;
+      if (timeSinceLastUpdate >= minUpdateInterval) {
+        const svg = container.querySelector(".chart-svg");
+        if (svg) this.updateChartIndicators(svg);
+        this.lastIndicatorUpdate = now;
+      } else {
+        const delay = minUpdateInterval - timeSinceLastUpdate;
+        this.indicatorUpdateTimeout = window.setTimeout(() => {
+          const svg = container.querySelector(".chart-svg");
+          if (svg) this.updateChartIndicators(svg);
+          this.lastIndicatorUpdate = Date.now();
+          this.indicatorUpdateTimeout = void 0;
+        }, delay);
+      }
+    }
+    /**
+     * Cleanup resources
+     */
+    cleanup() {
+      if (this.indicatorUpdateTimeout) {
+        clearTimeout(this.indicatorUpdateTimeout);
+        this.indicatorUpdateTimeout = void 0;
+      }
+      this.chartDataCache = void 0;
+    }
+    /**
+     * Get icon name from config or use default
+     */
+    getIcon(iconConfigKey, entityConfigKey, fallback) {
+      const configIcon = this.config[iconConfigKey];
+      if (configIcon) return configIcon;
+      const entityId = this.config[entityConfigKey];
+      if (entityId && this.hass.states[entityId]) {
+        const entityIcon = this.hass.states[entityId].attributes.icon;
+        if (entityIcon) return entityIcon;
+      }
+      return fallback;
+    }
+    /**
+     * Fetch and render chart, using cache if available
+     */
+    async fetchAndRenderChart(svgElement, hoursToShow = 12) {
+      if (this.chartRenderPending) return;
+      const now = Date.now();
+      const cacheAge = this.chartDataCache ? now - this.chartDataCache.timestamp : Infinity;
+      const cacheMaxAge = 5 * 60 * 1e3;
+      if (this.chartDataCache && cacheAge >= cacheMaxAge) {
+        this.chartDataCache = void 0;
+      }
+      if (this.chartDataCache && cacheAge < cacheMaxAge) {
+        requestAnimationFrame(() => {
+          this.renderChartFromCache(svgElement);
+        });
+        return;
+      }
+      this.chartRenderPending = true;
+      const end = /* @__PURE__ */ new Date();
+      const start = new Date(end.getTime() - hoursToShow * 60 * 60 * 1e3);
+      try {
+        const [productionHistory, gridHistory, loadHistory, batteryHistory] = await Promise.all([
+          this.fetchHistory(this.config.production_entity, start, end),
+          this.fetchHistory(this.config.grid_entity, start, end),
+          this.fetchHistory(this.config.load_entity, start, end),
+          this.fetchHistory(this.config.battery_entity, start, end)
+        ]);
+        const processChart = () => {
+          this.drawStackedAreaChart(svgElement, productionHistory, gridHistory, loadHistory, batteryHistory, hoursToShow);
+          this.chartRenderPending = false;
+        };
+        if ("requestIdleCallback" in window) {
+          window.requestIdleCallback(processChart, { timeout: 2e3 });
+        } else {
+          setTimeout(processChart, 0);
+        }
+      } catch (error) {
+        console.error("Error fetching chart data:", error);
+        this.chartRenderPending = false;
+        svgElement.innerHTML = `
+        <text x="400" y="200" text-anchor="middle" fill="rgb(160, 160, 160)" font-size="14">
+          Error loading chart data
+        </text>
+      `;
+      }
+    }
+    /**
+     * Fetch history from Home Assistant
+     */
+    async fetchHistory(entityId, start, end) {
+      const url = `history/period/${start.toISOString()}?filter_entity_id=${entityId}&end_time=${end.toISOString()}&minimal_response&no_attributes`;
+      const response = await this.hass.callApi("GET", url);
+      return response && response.length > 0 ? response[0] : [];
+    }
+    /**
+     * Render chart from cached data
+     */
+    renderChartFromCache(svgElement) {
+      if (!this.chartDataCache) return;
+      const dataPoints = this.chartDataCache.dataPoints;
+      const maxSupply = Math.max(...dataPoints.map((d) => d.solar + d.batteryDischarge + d.gridImport), ...dataPoints.map((d) => d.load));
+      const maxDemand = Math.max(...dataPoints.map((d) => d.batteryCharge + d.gridExport));
+      const totalRange = maxSupply + maxDemand;
+      const supplyRatio = totalRange > 0 ? maxSupply / totalRange : 0.5;
+      const demandRatio = totalRange > 0 ? maxDemand / totalRange : 0.5;
+      const width = 800;
+      const height = 400;
+      const margin = { top: 20, right: 150, bottom: 40, left: 60 };
+      const chartWidth = width - margin.left - margin.right;
+      const chartHeight = height - margin.top - margin.bottom;
+      const supplyHeight = chartHeight * supplyRatio;
+      const demandHeight = chartHeight * demandRatio;
+      const supplyScale = maxSupply > 0 ? supplyHeight / (maxSupply * 1.1) : 1;
+      const demandScale = maxDemand > 0 ? demandHeight / (maxDemand * 1.1) : 1;
+      const zeroLineY = margin.top + supplyHeight;
+      const supplyPaths = this.createStackedPaths(dataPoints, chartWidth, supplyHeight, supplyScale, margin, "supply", zeroLineY);
+      const demandPaths = this.createStackedPaths(dataPoints, chartWidth, demandHeight, demandScale, margin, "demand", zeroLineY);
+      const loadLine = createLoadLine(dataPoints, chartWidth, supplyHeight, supplyScale, margin, zeroLineY);
+      const chartContent = `
       <g opacity="0.1">
-        ${this._createGridLines(d,g,c,Math.max(i,n))}
+        ${createGridLines(chartWidth, chartHeight, margin)}
       </g>
-      <line x1="${c.left}" y1="${m}" x2="${c.left+d}" y2="${m}" stroke="rgb(160, 160, 160)" stroke-width="1" stroke-dasharray="4,4" />
-      ${S}
-      ${w}
-      ${this._createTimeLabels(d,g,c,12)}
-      ${this._createYAxisLabels(l,b,c,i,n,m)}
-    `;t.innerHTML=$,this._updateChartIndicators(),this._addLoadLineOnTop(t,E);const y=this.querySelector(".loading-message");y&&y.remove()}_throttledUpdateChartIndicators(){if(!this._isVisible){this._pendingUpdate=!0;return}this._indicatorUpdateTimeout&&(clearTimeout(this._indicatorUpdateTimeout),this._indicatorUpdateTimeout=void 0);const t=Date.now(),e=t-this._lastIndicatorUpdate,i=250;if(e>=i)this._updateChartIndicators(),this._lastIndicatorUpdate=t;else{const n=i-e;this._indicatorUpdateTimeout=window.setTimeout(()=>{this._updateChartIndicators(),this._lastIndicatorUpdate=Date.now(),this._indicatorUpdateTimeout=void 0},n)}}_updateChartIndicators(){const t=this.querySelector(".chart-svg");if(!t||!this._chartDataCache||!this._liveChartValues)return;const e=this._chartDataCache.dataPoints,i=Math.max(...e.map(w=>w.solar+w.batteryDischarge+w.gridImport),...e.map(w=>w.load)),n=Math.max(...e.map(w=>w.batteryCharge+w.gridExport)),o=i+n,a=o>0?i/o:.5,r=o>0?n/o:.5,h=800,s=400,c={top:20,right:150,bottom:40,left:60},d=s-c.top-c.bottom,g=d*a,l=d*r,b=i>0?g/(i*1.1):1,x=n>0?l/(n*1.1):1,u=c.top+g;this._renderChartIndicators(t,e,h-c.left-c.right,g,l,b,x,c,{},u);const m=this._createLoadLine(e,h-c.left-c.right,g,b,c,u);this._addLoadLineOnTop(t,m)}async _fetchHistory(t,e,i){if(!this._hass)return[];const n=`history/period/${e.toISOString()}?filter_entity_id=${t}&end_time=${i.toISOString()}&minimal_response&no_attributes`;try{return(await this._hass.callApi("GET",n))[0]||[]}catch(o){return console.error(`Error fetching history for ${t}:`,o),[]}}_drawStackedAreaChart(t,e,i,n,o){const a=this.querySelector(".chart-svg");if(!a)return;const r=800,h=400,s={top:20,right:150,bottom:40,left:60},c=r-s.left-s.right,d=h-s.top-s.bottom,l=o*120,x=o*12,u=10,m=new Date,w=Math.floor(m.getMinutes()/5)*5,S=new Date(m.getFullYear(),m.getMonth(),m.getDate(),m.getHours(),w,0,0),E=new Date(S.getTime()-o*60*60*1e3),$=[];for(let v=0;v<l;v++){const P=new Date(E.getTime()+v*30*1e3),H=this._interpolateValue(t,P),R=this._interpolateValue(e,P),V=this._interpolateValue(i,P);let O=this._interpolateValue(n,P);this._config?.invert_battery_data&&(O=-O),$.push({time:P,solar:Math.max(0,H),batteryDischarge:Math.max(0,O),batteryCharge:Math.max(0,-O),gridImport:Math.max(0,R),gridExport:Math.max(0,-R),load:Math.max(0,V)})}const y=[];for(let v=0;v<x;v++){const P=new Date(E.getTime()+(v+1)*5*60*1e3),H=v*u,R=Math.min(H+u,$.length),V=R-H;let O=0,Q=0,X=0,j=0,B=0,z=0;for(let N=H;N<R;N++)O+=$[N].solar,Q+=$[N].batteryDischarge,X+=$[N].batteryCharge,j+=$[N].gridImport,B+=$[N].gridExport,z+=$[N].load;v===0&&console.log("Chart data sample (5-min avg of 30-sec data):",{time:P.toISOString(),windowSize:V,solar:O/V,invert_battery_data:this._config?.invert_battery_data}),y.push({time:P,solar:O/V,batteryDischarge:Q/V,batteryCharge:X/V,gridImport:j/V,gridExport:B/V,load:z/V})}$.length=0,this._chartDataCache={timestamp:Date.now(),dataPoints:y};const p=Math.max(...y.map(v=>v.solar+v.batteryDischarge+v.gridImport),...y.map(v=>v.load)),C=Math.max(...y.map(v=>v.batteryCharge+v.gridExport)),D=p+C,A=D>0?p/D:.5,M=D>0?C/D:.5,F=p>0?d*A/(p*1.1):1,L=C>0?d*M/(C*1.1):1,f=Math.min(F,L),T=p*f*1.1,Y=C*f*1.1,_=s.top+T,k=this._createStackedPaths(y,c,T,f,s,"supply",_),I=this._createStackedPaths(y,c,Y,f,s,"demand",_),W=this._createLoadLine(y,c,T,f,s,_);let q=`
-      <!-- Grid lines -->
+      <line x1="${margin.left}" y1="${zeroLineY}" x2="${margin.left + chartWidth}" y2="${zeroLineY}" stroke="rgb(160, 160, 160)" stroke-width="1" stroke-dasharray="4,4" />
+      ${demandPaths}
+      ${supplyPaths}
+      ${createTimeLabels(chartWidth, chartHeight, margin, 12)}
+      ${createYAxisLabels(supplyHeight, demandHeight, margin, maxSupply, maxDemand, zeroLineY)}
+    `;
+      svgElement.innerHTML = chartContent;
+      this.updateChartIndicators(svgElement);
+      this.addLoadLineOnTop(svgElement, loadLine);
+    }
+    /**
+     * Draw stacked area chart from history data
+     */
+    async drawStackedAreaChart(svgElement, productionHistory, gridHistory, loadHistory, batteryHistory, hoursToShow) {
+      const width = 800;
+      const height = 400;
+      const margin = { top: 20, right: 150, bottom: 40, left: 60 };
+      const chartWidth = width - margin.left - margin.right;
+      const chartHeight = height - margin.top - margin.bottom;
+      const rawPointsPerHour = 120;
+      const totalRawPoints = hoursToShow * rawPointsPerHour;
+      const visiblePointsPerHour = 12;
+      const totalVisiblePoints = hoursToShow * visiblePointsPerHour;
+      const rawPointsPerVisibleTick = 10;
+      const now = /* @__PURE__ */ new Date();
+      const endMinutes = Math.floor(now.getMinutes() / 5) * 5;
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), endMinutes, 0, 0);
+      const start = new Date(end.getTime() - hoursToShow * 60 * 60 * 1e3);
+      const chunkSize = 240;
+      const rawDataPoints = [];
+      for (let chunkStart = 0; chunkStart < totalRawPoints; chunkStart += chunkSize) {
+        const chunkEnd = Math.min(chunkStart + chunkSize, totalRawPoints);
+        if (chunkStart > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        for (let i = chunkStart; i < chunkEnd; i++) {
+          const time = new Date(start.getTime() + i * 30 * 1e3);
+          const production = this.interpolateValue(productionHistory, time);
+          const grid = this.interpolateValue(gridHistory, time);
+          const load = this.interpolateValue(loadHistory, time);
+          let battery = this.interpolateValue(batteryHistory, time);
+          if (this.config.invert_battery_data) {
+            battery = -battery;
+          }
+          rawDataPoints.push({
+            time,
+            solar: Math.max(0, production),
+            batteryDischarge: Math.max(0, battery),
+            batteryCharge: Math.max(0, -battery),
+            gridImport: Math.max(0, grid),
+            gridExport: Math.max(0, -grid),
+            load: Math.max(0, load)
+          });
+        }
+      }
+      const dataPoints = [];
+      for (let i = 0; i < totalVisiblePoints; i++) {
+        const visibleTime = new Date(start.getTime() + (i + 1) * 5 * 60 * 1e3);
+        const startIdx = i * rawPointsPerVisibleTick;
+        const endIdx = Math.min(startIdx + rawPointsPerVisibleTick, rawDataPoints.length);
+        const windowSize = endIdx - startIdx;
+        let solarSum = 0, batteryDischargeSum = 0, batteryChargeSum = 0;
+        let gridImportSum = 0, gridExportSum = 0, loadSum = 0;
+        for (let j = startIdx; j < endIdx; j++) {
+          solarSum += rawDataPoints[j].solar;
+          batteryDischargeSum += rawDataPoints[j].batteryDischarge;
+          batteryChargeSum += rawDataPoints[j].batteryCharge;
+          gridImportSum += rawDataPoints[j].gridImport;
+          gridExportSum += rawDataPoints[j].gridExport;
+          loadSum += rawDataPoints[j].load;
+        }
+        dataPoints.push({
+          time: visibleTime,
+          solar: solarSum / windowSize,
+          batteryDischarge: batteryDischargeSum / windowSize,
+          batteryCharge: batteryChargeSum / windowSize,
+          gridImport: gridImportSum / windowSize,
+          gridExport: gridExportSum / windowSize,
+          load: loadSum / windowSize
+        });
+      }
+      this.chartDataCache = {
+        timestamp: Date.now(),
+        dataPoints
+      };
+      const maxSupply = Math.max(...dataPoints.map((d) => d.solar + d.batteryDischarge + d.gridImport), ...dataPoints.map((d) => d.load));
+      const maxDemand = Math.max(...dataPoints.map((d) => d.batteryCharge + d.gridExport));
+      const totalRange = maxSupply + maxDemand;
+      const supplyRatio = totalRange > 0 ? maxSupply / totalRange : 0.5;
+      const demandRatio = totalRange > 0 ? maxDemand / totalRange : 0.5;
+      const supplyScale = maxSupply > 0 ? chartHeight * supplyRatio / (maxSupply * 1.1) : 1;
+      const demandScale = maxDemand > 0 ? chartHeight * demandRatio / (maxDemand * 1.1) : 1;
+      const scale = Math.min(supplyScale, demandScale);
+      const supplyHeight = maxSupply * scale * 1.1;
+      const demandHeight = maxDemand * scale * 1.1;
+      const zeroLineY = margin.top + supplyHeight;
+      const supplyPaths = this.createStackedPaths(dataPoints, chartWidth, supplyHeight, scale, margin, "supply", zeroLineY);
+      const demandPaths = this.createStackedPaths(dataPoints, chartWidth, demandHeight, scale, margin, "demand", zeroLineY);
+      const loadLine = createLoadLine(dataPoints, chartWidth, supplyHeight, scale, margin, zeroLineY);
+      const svgContent = `
       <g opacity="0.1">
-        ${this._createGridLines(c,d,s,Math.max(p,C))}
+        ${createGridLines(chartWidth, chartHeight, margin)}
       </g>
-      
-      <!-- Zero line (dynamic position based on supply height) -->
-      <line 
-        x1="${s.left}" 
-        y1="${_}" 
-        x2="${s.left+c}" 
-        y2="${_}" 
-        stroke="rgb(160, 160, 160)" 
-        stroke-width="1" 
-        stroke-dasharray="4,4"
-      />
-      
-      <!-- Demand areas (below zero line) -->
-      ${I}
-      
-      <!-- Supply areas (above zero line) -->
-      ${k}
-      
-      <!-- Time axis labels -->
-      ${this._createTimeLabels(c,d,s,o)}
-      
-      <!-- Y-axis labels -->
-      ${this._createYAxisLabels(T,Y,s,p,C,_)}
-      
-      <!-- Floating indicators with current values -->
-      ${this._createFloatingIndicators(y,c,d,f,f,s,r)}
-      
-      <!-- Hidden icon sources for extraction -->
-      ${this._createChartIconSources()}
-    `;a.innerHTML=q,requestAnimationFrame(()=>{this._extractChartIcons(y,c,T,Y,f,f,s,_),this._addLoadLineOnTop(a,W)})}_interpolateValue(t,e){if(t.length===0)return 0;let i=t[0],n=Math.abs(new Date(t[0].last_changed).getTime()-e.getTime());for(const o of t){const a=Math.abs(new Date(o.last_changed).getTime()-e.getTime());a<n&&(n=a,i=o)}return parseFloat(i.state)||0}_createStackedPaths(t,e,i,n,o,a,r){const h=t.length,s=e/(h-1);if(a==="supply"){const c=this._createAreaPath(t,s,r,n,o,l=>l.solar,0,"down"),d=this._createAreaPath(t,s,r,n,o,l=>l.batteryDischarge,l=>l.solar,"down"),g=this._createAreaPath(t,s,r,n,o,l=>l.gridImport,l=>l.solar+l.batteryDischarge,"down");return`
-        ${g?`<path d="${g}" fill="#c62828" opacity="0.8" />`:""}
-        ${d?`<path d="${d}" fill="#1976d2" opacity="0.8" />`:""}
-        ${c?`<path d="${c}" fill="#388e3c" opacity="0.85" />`:""}
-      `}else{const c=this._createAreaPath(t,s,r,n,o,g=>g.batteryCharge,0,"up"),d=this._createAreaPath(t,s,r,n,o,g=>g.gridExport,g=>g.batteryCharge,"up");return`
-        ${d?`<path d="${d}" fill="#f9a825" opacity="0.8" />`:""}
-        ${c?`<path d="${c}" fill="#1976d2" opacity="0.8" />`:""}
-      `}}_createLoadLine(t,e,i,n,o,a){if(!t||t.length===0)return"";const r=e/(t.length-1);return`<path d="${t.map((s,c)=>{const d=o.left+c*r,g=a-s.load*n;return`${c===0?"M":"L"} ${d},${g}`}).join(" ")}" fill="none" stroke="#CCCCCC" stroke-width="3" opacity="0.9" />`}_createFloatingIndicators(t,e,i,n,o,a,r){return""}_createChartIconSources(){const t=this._getIcon("load_icon","load_entity","mdi:home-lightning-bolt"),e=this._getIcon("production_icon","production_entity","mdi:solar-power"),i=this._getIcon("battery_icon","battery_entity","mdi:battery"),n=this._getIcon("grid_icon","grid_entity","mdi:transmission-tower");return`
+      <line x1="${margin.left}" y1="${zeroLineY}" x2="${margin.left + chartWidth}" y2="${zeroLineY}" stroke="rgb(160, 160, 160)" stroke-width="1" stroke-dasharray="4,4" />
+      ${demandPaths}
+      ${supplyPaths}
+      ${createTimeLabels(chartWidth, chartHeight, margin, hoursToShow)}
+      ${createYAxisLabels(supplyHeight, demandHeight, margin, maxSupply, maxDemand, zeroLineY)}
+      ${this.createChartIconSources()}
+    `;
+      svgElement.innerHTML = svgContent;
+      this.attachChartAreaClickHandlers(svgElement);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            this.extractChartIcons(svgElement, dataPoints, chartWidth, supplyHeight, demandHeight, scale, scale, margin, zeroLineY);
+            requestAnimationFrame(() => {
+              this.addLoadLineOnTop(svgElement, loadLine);
+            });
+          });
+        });
+      });
+    }
+    /**
+     * Interpolate value from history at specific time
+     */
+    interpolateValue(history2, targetTime) {
+      if (history2.length === 0) return 0;
+      let closestPoint = history2[0];
+      let minDiff = Math.abs(new Date(history2[0].last_changed).getTime() - targetTime.getTime());
+      for (const point of history2) {
+        const diff = Math.abs(new Date(point.last_changed).getTime() - targetTime.getTime());
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestPoint = point;
+        }
+      }
+      return parseFloat(closestPoint.state) || 0;
+    }
+    /**
+     * Create stacked area paths for supply or demand
+     */
+    createStackedPaths(dataPoints, chartWidth, chartHeight, yScale, margin, type, zeroLineY) {
+      const totalPoints = dataPoints.length;
+      const xStep = chartWidth / (totalPoints - 1);
+      if (type === "supply") {
+        const solarPath = createAreaPath(
+          dataPoints,
+          xStep,
+          zeroLineY,
+          yScale,
+          margin,
+          (d) => d.solar,
+          0,
+          "down"
+        );
+        const batteryPath = createAreaPath(
+          dataPoints,
+          xStep,
+          zeroLineY,
+          yScale,
+          margin,
+          (d) => d.batteryDischarge,
+          (d) => d.solar,
+          "down"
+        );
+        const gridPath = createAreaPath(
+          dataPoints,
+          xStep,
+          zeroLineY,
+          yScale,
+          margin,
+          (d) => d.gridImport,
+          (d) => d.solar + d.batteryDischarge,
+          "down"
+        );
+        return `
+        ${gridPath ? `<path id="chart-area-grid-import" d="${gridPath}" fill="#c62828" opacity="0.8" style="cursor: pointer;" />` : ""}
+        ${batteryPath ? `<path id="chart-area-battery-discharge" d="${batteryPath}" fill="#1976d2" opacity="0.8" style="cursor: pointer;" />` : ""}
+        ${solarPath ? `<path id="chart-area-solar" d="${solarPath}" fill="#388e3c" opacity="0.85" style="cursor: pointer;" />` : ""}
+      `;
+      } else {
+        const batteryChargePath = createAreaPath(
+          dataPoints,
+          xStep,
+          zeroLineY,
+          yScale,
+          margin,
+          (d) => d.batteryCharge,
+          0,
+          "up"
+        );
+        const gridExportPath = createAreaPath(
+          dataPoints,
+          xStep,
+          zeroLineY,
+          yScale,
+          margin,
+          (d) => d.gridExport,
+          (d) => d.batteryCharge,
+          "up"
+        );
+        return `
+        ${gridExportPath ? `<path id="chart-area-grid-export" d="${gridExportPath}" fill="#f9a825" opacity="0.8" style="cursor: pointer;" />` : ""}
+        ${batteryChargePath ? `<path id="chart-area-battery-charge" d="${batteryChargePath}" fill="#1976d2" opacity="0.8" style="cursor: pointer;" />` : ""}
+      `;
+      }
+    }
+    /**
+     * Create hidden icon sources for extraction
+     */
+    createChartIconSources() {
+      const loadIcon = this.getIcon("load_icon", "load_entity", "mdi:home-lightning-bolt");
+      const solarIcon = this.getIcon("production_icon", "production_entity", "mdi:solar-power");
+      const batteryIcon = this.getIcon("battery_icon", "battery_entity", "mdi:battery");
+      const gridIcon = this.getIcon("grid_icon", "grid_entity", "mdi:transmission-tower");
+      return `
       <foreignObject id="chart-icon-source-load" x="-100" y="-100" width="24" height="24">
         <div xmlns="http://www.w3.org/1999/xhtml">
-          <ha-icon icon="${t}"></ha-icon>
+          <ha-icon icon="${loadIcon}"></ha-icon>
         </div>
       </foreignObject>
       <foreignObject id="chart-icon-source-solar" x="-100" y="-100" width="24" height="24">
         <div xmlns="http://www.w3.org/1999/xhtml">
-          <ha-icon icon="${e}"></ha-icon>
+          <ha-icon icon="${solarIcon}"></ha-icon>
         </div>
       </foreignObject>
       <foreignObject id="chart-icon-source-battery" x="-100" y="-100" width="24" height="24">
         <div xmlns="http://www.w3.org/1999/xhtml">
-          <ha-icon icon="${i}"></ha-icon>
+          <ha-icon icon="${batteryIcon}"></ha-icon>
         </div>
       </foreignObject>
       <foreignObject id="chart-icon-source-grid" x="-100" y="-100" width="24" height="24">
         <div xmlns="http://www.w3.org/1999/xhtml">
-          <ha-icon icon="${n}"></ha-icon>
+          <ha-icon icon="${gridIcon}"></ha-icon>
         </div>
       </foreignObject>
-    `}async _extractChartIcons(t,e,i,n,o,a,r,h){const s=this.querySelector(".chart-svg");if(!s||!t||t.length===0)return;const c=["load","solar","battery","grid"],d={};for(const g of c){const l=s.querySelector(`#chart-icon-source-${g}`);if(!l)continue;const b=l.querySelector("div");if(!b)continue;const x=b.querySelector("ha-icon");if(!x)continue;const u=x.getAttribute("icon");if(!u)continue;if(this._iconCache.has(u)){d[g]=this._iconCache.get(u)||null;continue}const m=await this._extractIconPath(x,u);d[g]=m,m&&this._iconCache.set(u,m)}this._renderChartIndicators(s,t,e,i,n,o,a,r,d,h)}async _extractIconPath(t,e,i=10){for(let n=0;n<i;n++){try{const o=t.shadowRoot;if(!o){await new Promise(s=>setTimeout(s,100));continue}let a=o.querySelector("svg");if(!a){const s=o.querySelector("ha-svg-icon");s&&s.shadowRoot&&(a=s.shadowRoot.querySelector("svg"))}if(!a){await new Promise(s=>setTimeout(s,100));continue}const r=a.querySelector("path");if(!r){await new Promise(s=>setTimeout(s,100));continue}const h=r.getAttribute("d");if(h)return h}catch(o){console.error(`Failed to extract icon path for ${e} (attempt ${n+1}):`,o)}await new Promise(o=>setTimeout(o,100))}return null}_renderChartIndicators(t,e,i,n,o,a,r,h,s,c){let d=t.querySelector("#chart-indicators");const g=!d;d||(d=document.createElementNS("http://www.w3.org/2000/svg","g"),d.setAttribute("id","chart-indicators"),t.appendChild(d)),g&&t.querySelectorAll('[id^="chart-icon-source-"]').forEach(C=>C.remove());let l;if(this._liveChartValues){const{grid:p,load:C,production:D,battery:A}=this._liveChartValues;l={load:Math.max(0,C),solar:Math.max(0,D),batteryDischarge:Math.max(0,A),batteryCharge:Math.max(0,-A),gridImport:Math.max(0,p),gridExport:Math.max(0,-p)}}else l=e[e.length-1];const b=h.left+i,x=c-l.load*a,u=c-l.solar*a,m=c-(l.solar+l.batteryDischarge)*a,w=c-(l.solar+l.batteryDischarge+l.gridImport)*a,S=c+l.batteryCharge*r,E=c+(l.batteryCharge+l.gridExport)*r,$=p=>`${Math.round(p)} W`,y=(p,C,D,A,M,F="",L=!0)=>{let f=d.querySelector(`#${p}`);if(!L){f&&f.remove();return}if(!f){f=document.createElementNS("http://www.w3.org/2000/svg","g"),f.setAttribute("id",p);const Y=s[A];if(Y){const k=document.createElementNS("http://www.w3.org/2000/svg","g");k.setAttribute("class","indicator-icon"),k.setAttribute("transform","translate(10, -8) scale(0.67)");const I=document.createElementNS("http://www.w3.org/2000/svg","path");I.setAttribute("d",Y),I.setAttribute("fill",D),k.appendChild(I),f.appendChild(k)}const _=document.createElementNS("http://www.w3.org/2000/svg","text");_.setAttribute("class","indicator-text"),_.setAttribute("x","28"),_.setAttribute("y","4"),_.setAttribute("fill",D),_.setAttribute("font-size","12"),_.setAttribute("font-weight","600"),f.appendChild(_),d.appendChild(f)}f.setAttribute("transform",`translate(${b+10}, ${C})`);const T=f.querySelector(".indicator-text");T&&(T.textContent=`${F}${M}`)};y("indicator-solar",u,"#388e3c","solar",$(l.solar),"",l.solar>0),y("indicator-battery-discharge",m,"#1976d2","battery",$(l.batteryDischarge),"+",l.batteryDischarge>0),y("indicator-grid-import",w,"#c62828","grid",$(l.gridImport),"",l.gridImport>0),y("indicator-battery-charge",S,"#1976d2","battery",$(l.batteryCharge),"-",l.batteryCharge>0),y("indicator-grid-export",E,"#f9a825","grid",$(l.gridExport),"",l.gridExport>0),y("indicator-load",x,"#CCCCCC","load",$(l.load),"",!0)}_addLoadLineOnTop(t,e){if(!e)return;const i=t.querySelector("#load-line");i&&i.remove();const n=e.match(/d="([^"]+)"/);if(!n)return;const o=n[1],a=document.createElementNS("http://www.w3.org/2000/svg","path");a.setAttribute("id","load-line"),a.setAttribute("d",o),a.setAttribute("fill","none"),a.setAttribute("stroke","#CCCCCC"),a.setAttribute("stroke-width","3"),a.setAttribute("opacity","0.9"),t.appendChild(a)}_createAreaPath(t,e,i,n,o,a,r,h){const s=[],c=[];let d=!1;if(t.forEach((l,b)=>{const x=o.left+b*e,u=a(l),m=typeof r=="function"?r(l):r;u>0&&(d=!0);const w=h==="down"?-(u+m)*n:(u+m)*n,S=h==="down"?-m*n:m*n;s.push({x,y:i+w}),c.push({x,y:i+S})}),!d)return null;let g=`M ${s[0].x} ${s[0].y}`;for(let l=1;l<s.length;l++)g+=` L ${s[l].x} ${s[l].y}`;for(let l=c.length-1;l>=0;l--)g+=` L ${c[l].x} ${c[l].y}`;return g+=" Z",g}_createGridLines(t,e,i,n){const o=[];for(let r=0;r<=4;r++){const h=i.top+r*e/4;o.push(`<line x1="${i.left}" y1="${h}" x2="${i.left+t}" y2="${h}" stroke="white" stroke-width="1" />`)}return o.join(`
-`)}_createTimeLabels(t,e,i,n){const o=[],r=new Date;for(let h=0;h<=6;h++){const s=n-h*n/6,c=new Date(r.getTime()-s*60*60*1e3),d=c.getMinutes(),g=d<15?0:d<45?30:0,l=d>=45?1:0;c.setMinutes(g),c.setSeconds(0),c.setMilliseconds(0),l&&c.setHours(c.getHours()+l);const b=i.left+h*t/6,x=i.top+e+20,u=c.getHours(),m=u===0?12:u>12?u-12:u,w=u>=12?"PM":"AM";o.push(`
-        <text x="${b}" y="${x}" text-anchor="middle" fill="rgb(160, 160, 160)" font-size="11">
-          ${m} ${w}
-        </text>
-      `)}return o.join(`
-`)}_createYAxisLabels(t,e,i,n,o,a){const r=[];return r.push(`<text x="${i.left-10}" y="${i.top+5}" text-anchor="end" fill="rgb(160, 160, 160)" font-size="11">${Math.round(n)}W</text>`),r.push(`<text x="${i.left-10}" y="${a+5}" text-anchor="end" fill="rgb(160, 160, 160)" font-size="11">0</text>`),r.push(`<text x="${i.left-10}" y="${a+e+5}" text-anchor="end" fill="rgb(160, 160, 160)" font-size="11">-${Math.round(o)}W</text>`),r.join(`
-`)}_createChartLegend(t,e,i){const n=[{label:"Solar",color:i.solar},{label:"Battery",color:i.batteryDischarge},{label:"Grid Import",color:i.gridImport},{label:"Grid Export",color:i.gridExport},{label:"Load",color:i.load}],o=t-e.right-10;let a=e.top;return n.map((r,h)=>{const s=a+h*20;return`
-        <rect x="${o-80}" y="${s-10}" width="12" height="12" fill="${r.color}" opacity="0.8" />
-        <text x="${o-64}" y="${s}" fill="rgb(200, 200, 200)" font-size="11">${r.label}</text>
-      `}).join(`
-`)}_updateSegmentVisibility(t,e,i){if(!t||!i){t?.setAttribute("data-width-px","");return}e>=80?t.setAttribute("data-width-px","show-label"):e>=40?t.setAttribute("data-width-px","show-icon"):t.setAttribute("data-width-px","")}}customElements.define("energy-flow-card",J),window.customCards=window.customCards||[],window.customCards.push({type:"energy-flow-card",name:"Energy Flow Card",description:"A test energy-flow card."})})();
+    `;
+    }
+    /**
+     * Extract icon paths from Home Assistant icons
+     */
+    async extractChartIcons(svgElement, dataPoints, chartWidth, supplyHeight, demandHeight, supplyScale, demandScale, margin, zeroLineY) {
+      if (dataPoints.length === 0) return;
+      const iconTypes = ["load", "solar", "battery", "grid"];
+      const iconPaths = {};
+      for (const type of iconTypes) {
+        const iconSourceFO = svgElement.querySelector(`#chart-icon-source-${type}`);
+        if (!iconSourceFO) continue;
+        const haIconDiv = iconSourceFO.querySelector("div");
+        if (!haIconDiv) continue;
+        const iconSource = haIconDiv.querySelector("ha-icon");
+        if (!iconSource) continue;
+        const iconName = iconSource.getAttribute("icon");
+        if (!iconName) continue;
+        if (this.iconCache.has(iconName)) {
+          iconPaths[type] = this.iconCache.get(iconName) || null;
+          continue;
+        }
+        const pathData = await this.extractIconPath(iconSource, iconName);
+        iconPaths[type] = pathData;
+        if (pathData) {
+          this.iconCache.set(iconName, pathData);
+        }
+      }
+      this.renderChartIndicators(svgElement, dataPoints, chartWidth, supplyHeight, demandHeight, supplyScale, demandScale, margin, iconPaths, zeroLineY);
+    }
+    /**
+     * Extract single icon path from shadow DOM
+     */
+    async extractIconPath(iconElement, iconName, maxAttempts = 10) {
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          const shadowRoot = iconElement.shadowRoot;
+          if (!shadowRoot) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            continue;
+          }
+          let svgElement = shadowRoot.querySelector("svg");
+          if (!svgElement) {
+            const haSvgIcon = shadowRoot.querySelector("ha-svg-icon");
+            if (haSvgIcon && haSvgIcon.shadowRoot) {
+              svgElement = haSvgIcon.shadowRoot.querySelector("svg");
+            }
+          }
+          if (!svgElement) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            continue;
+          }
+          const pathElement = svgElement.querySelector("path");
+          if (!pathElement) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            continue;
+          }
+          const pathData = pathElement.getAttribute("d");
+          if (pathData) {
+            return pathData;
+          }
+        } catch (e) {
+          console.error(`Failed to extract icon path for ${iconName} (attempt ${attempt + 1}):`, e);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return null;
+    }
+    /**
+     * Render chart indicators with native SVG
+     */
+    renderChartIndicators(svgElement, dataPoints, chartWidth, supplyHeight, demandHeight, supplyScale, demandScale, margin, iconPaths, zeroLineY) {
+      let indicatorsGroup = svgElement.querySelector("#chart-indicators");
+      const isFirstRender = !indicatorsGroup;
+      if (!indicatorsGroup) {
+        indicatorsGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        indicatorsGroup.setAttribute("id", "chart-indicators");
+        svgElement.appendChild(indicatorsGroup);
+      }
+      if (isFirstRender) {
+        const iconSources = svgElement.querySelectorAll('[id^="chart-icon-source-"]');
+        iconSources.forEach((source) => source.remove());
+      }
+      let currentValues;
+      if (this.liveChartValues) {
+        const { grid, load, production, battery } = this.liveChartValues;
+        currentValues = {
+          load: Math.max(0, load),
+          solar: Math.max(0, production),
+          batteryDischarge: Math.max(0, battery),
+          batteryCharge: Math.max(0, -battery),
+          gridImport: Math.max(0, grid),
+          gridExport: Math.max(0, -grid)
+        };
+      } else {
+        currentValues = dataPoints[dataPoints.length - 1];
+      }
+      const rightX = margin.left + chartWidth;
+      const loadY = zeroLineY - currentValues.load * supplyScale;
+      const solarY = zeroLineY - currentValues.solar * supplyScale;
+      const batteryDischargeY = zeroLineY - (currentValues.solar + currentValues.batteryDischarge) * supplyScale;
+      const gridImportY = zeroLineY - (currentValues.solar + currentValues.batteryDischarge + currentValues.gridImport) * supplyScale;
+      const batteryChargeY = zeroLineY + currentValues.batteryCharge * demandScale;
+      const gridExportY = zeroLineY + (currentValues.batteryCharge + currentValues.gridExport) * demandScale;
+      const formatValue = (value) => {
+        return `${Math.round(value)} W`;
+      };
+      const updateIndicator = (id, y, color, iconType, value, prefix = "", shouldShow = true, entity, tapAction) => {
+        let group = indicatorsGroup.querySelector(`#${id}`);
+        if (!shouldShow) {
+          if (group) group.remove();
+          return;
+        }
+        if (!group) {
+          group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          group.setAttribute("id", id);
+          group.style.cursor = "pointer";
+          const iconPath = iconPaths[iconType];
+          if (iconPath) {
+            const icon = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            icon.setAttribute("class", "indicator-icon");
+            icon.setAttribute("transform", "translate(10, -8) scale(0.67)");
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", iconPath);
+            path.setAttribute("fill", color);
+            icon.appendChild(path);
+            group.appendChild(icon);
+          }
+          const text2 = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          text2.setAttribute("class", "indicator-text");
+          text2.setAttribute("x", "28");
+          text2.setAttribute("y", "4");
+          text2.setAttribute("fill", color);
+          text2.setAttribute("font-size", "12");
+          text2.setAttribute("font-weight", "600");
+          group.appendChild(text2);
+          if (entity && tapAction) {
+            group.addEventListener("click", () => {
+              handleAction(this.hass, this.fireEvent, tapAction, entity);
+            });
+          }
+          indicatorsGroup.appendChild(group);
+        }
+        group.setAttribute("transform", `translate(${rightX + 10}, ${y})`);
+        const text = group.querySelector(".indicator-text");
+        if (text) {
+          text.textContent = `${prefix}${value}`;
+        }
+      };
+      updateIndicator("indicator-solar", solarY, "#388e3c", "solar", formatValue(currentValues.solar), "", currentValues.solar > 0, this.config.production_entity, this.config.production_tap_action);
+      updateIndicator("indicator-battery-discharge", batteryDischargeY, "#1976d2", "battery", formatValue(currentValues.batteryDischarge), "+", currentValues.batteryDischarge > 0, this.config.battery_entity, this.config.battery_tap_action);
+      updateIndicator("indicator-grid-import", gridImportY, "#c62828", "grid", formatValue(currentValues.gridImport), "", currentValues.gridImport > 0, this.config.grid_entity, this.config.grid_tap_action);
+      updateIndicator("indicator-battery-charge", batteryChargeY, "#1976d2", "battery", formatValue(currentValues.batteryCharge), "-", currentValues.batteryCharge > 0, this.config.battery_entity, this.config.battery_tap_action);
+      updateIndicator("indicator-grid-export", gridExportY, "#f9a825", "grid", formatValue(currentValues.gridExport), "", currentValues.gridExport > 0, this.config.grid_entity, this.config.grid_tap_action);
+      updateIndicator("indicator-load", loadY, "#CCCCCC", "load", formatValue(currentValues.load), "", true, this.config.load_entity, this.config.load_tap_action);
+    }
+    /**
+     * Update chart indicators with throttling
+     */
+    updateChartIndicators(svgElement) {
+      if (!this.chartDataCache || !svgElement) return;
+      const dataPoints = this.chartDataCache.dataPoints;
+      const maxSupply = Math.max(...dataPoints.map((d) => d.solar + d.batteryDischarge + d.gridImport), ...dataPoints.map((d) => d.load));
+      const maxDemand = Math.max(...dataPoints.map((d) => d.batteryCharge + d.gridExport));
+      const totalRange = maxSupply + maxDemand;
+      const supplyRatio = totalRange > 0 ? maxSupply / totalRange : 0.5;
+      const demandRatio = totalRange > 0 ? maxDemand / totalRange : 0.5;
+      const width = 800;
+      const height = 400;
+      const margin = { top: 20, right: 150, bottom: 40, left: 60 };
+      const chartWidth = width - margin.left - margin.right;
+      const chartHeight = height - margin.top - margin.bottom;
+      const supplyHeight = chartHeight * supplyRatio;
+      const demandHeight = chartHeight * demandRatio;
+      const supplyScale = maxSupply > 0 ? supplyHeight / (maxSupply * 1.1) : 1;
+      const demandScale = maxDemand > 0 ? demandHeight / (maxDemand * 1.1) : 1;
+      const zeroLineY = margin.top + supplyHeight;
+      const iconPaths = {};
+      ["load", "solar", "battery", "grid"].forEach((type) => {
+        const iconName = this.getIcon(`${type}_icon`, `${type}_entity`, "");
+        if (this.iconCache.has(iconName)) {
+          iconPaths[type] = this.iconCache.get(iconName) || null;
+        }
+      });
+      this.renderChartIndicators(svgElement, dataPoints, chartWidth, supplyHeight, demandHeight, supplyScale, demandScale, margin, iconPaths, zeroLineY);
+    }
+    /**
+     * Add load line on top of chart
+     */
+    addLoadLineOnTop(svgElement, loadLine) {
+      if (!loadLine) return;
+      const existingLoadLine = svgElement.querySelector("#load-line");
+      if (existingLoadLine) {
+        existingLoadLine.remove();
+      }
+      const pathMatch = loadLine.match(/d="([^"]+)"/);
+      if (!pathMatch) return;
+      const pathData = pathMatch[1];
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("id", "load-line");
+      path.setAttribute("d", pathData);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "#CCCCCC");
+      path.setAttribute("stroke-width", "3");
+      path.setAttribute("opacity", "0.9");
+      path.style.cursor = "pointer";
+      path.addEventListener("click", () => {
+        handleAction(this.hass, this.fireEvent, this.config.load_tap_action, this.config.load_entity);
+      });
+      svgElement.appendChild(path);
+    }
+    /**
+     * Attach click handlers to chart areas
+     */
+    attachChartAreaClickHandlers(svgElement) {
+      const solarArea = svgElement.querySelector("#chart-area-solar");
+      if (solarArea) {
+        solarArea.addEventListener("click", () => {
+          handleAction(this.hass, this.fireEvent, this.config.production_tap_action, this.config.production_entity);
+        });
+      }
+      const batteryDischargeArea = svgElement.querySelector("#chart-area-battery-discharge");
+      if (batteryDischargeArea) {
+        batteryDischargeArea.addEventListener("click", () => {
+          handleAction(this.hass, this.fireEvent, this.config.battery_tap_action, this.config.battery_entity);
+        });
+      }
+      const batteryChargeArea = svgElement.querySelector("#chart-area-battery-charge");
+      if (batteryChargeArea) {
+        batteryChargeArea.addEventListener("click", () => {
+          handleAction(this.hass, this.fireEvent, this.config.battery_tap_action, this.config.battery_entity);
+        });
+      }
+      const gridImportArea = svgElement.querySelector("#chart-area-grid-import");
+      if (gridImportArea) {
+        gridImportArea.addEventListener("click", () => {
+          handleAction(this.hass, this.fireEvent, this.config.grid_tap_action, this.config.grid_entity);
+        });
+      }
+      const gridExportArea = svgElement.querySelector("#chart-area-grid-export");
+      if (gridExportArea) {
+        gridExportArea.addEventListener("click", () => {
+          handleAction(this.hass, this.fireEvent, this.config.grid_tap_action, this.config.grid_entity);
+        });
+      }
+    }
+    /**
+     * Clear cache (e.g., when data becomes stale)
+     */
+    clearCache() {
+      this.chartDataCache = void 0;
+    }
+  }
+  class EnergyFlowCard extends HTMLElement {
+    constructor() {
+      super();
+      this._resizeObserver = null;
+    }
+    static getStubConfig() {
+      return {};
+    }
+    static getConfigForm() {
+      return {
+        schema: [
+          { name: "view_mode", label: "View Mode", selector: { select: { options: [{ value: "default", label: "Default" }, { value: "compact", label: "Compact Bar" }, { value: "compact-battery", label: "Compact with Battery" }, { value: "chart", label: "Chart" }] } } },
+          { name: "grid_entity", label: "Grid", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
+          { name: "grid_name", selector: { entity_name: {} }, context: { entity: "grid_entity" } },
+          { name: "grid_icon", selector: { icon: {} }, context: { icon_entity: "grid_entity" } },
+          { name: "grid_min", label: "Grid Min (W)", selector: { number: { mode: "box" } } },
+          { name: "grid_max", label: "Grid Max (W)", selector: { number: { mode: "box" } } },
+          { name: "grid_tap_action", label: "Grid Tap Action", selector: { "ui-action": {} } },
+          { name: "load_entity", label: "Load", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
+          { name: "load_name", selector: { entity_name: {} }, context: { entity: "load_entity" } },
+          { name: "load_icon", selector: { icon: {} }, context: { icon_entity: "load_entity" } },
+          { name: "load_max", label: "Load Max (W)", selector: { number: { mode: "box" } } },
+          { name: "load_tap_action", label: "Load Tap Action", selector: { "ui-action": {} } },
+          { name: "production_entity", label: "Production", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
+          { name: "production_name", selector: { entity_name: {} }, context: { entity: "production_entity" } },
+          { name: "production_icon", selector: { icon: {} }, context: { icon_entity: "production_entity" } },
+          { name: "production_max", label: "Production Max (W)", selector: { number: { mode: "box" } } },
+          { name: "production_tap_action", label: "Production Tap Action", selector: { "ui-action": {} } },
+          { name: "battery_entity", label: "Battery", required: true, selector: { entity: { domain: "sensor", device_class: "power" } } },
+          { name: "battery_name", selector: { entity_name: {} }, context: { entity: "battery_entity" } },
+          { name: "battery_icon", selector: { icon: {} }, context: { icon_entity: "battery_entity" } },
+          { name: "battery_min", label: "Battery Min (W)", selector: { number: { mode: "box" } } },
+          { name: "battery_max", label: "Battery Max (W)", selector: { number: { mode: "box" } } },
+          { name: "battery_tap_action", label: "Battery Tap Action", selector: { "ui-action": {} } },
+          { name: "battery_soc_entity", label: "Battery SOC (%) Entity", selector: { entity: { domain: "sensor" } } },
+          { name: "invert_battery_data", label: "Invert Battery Data", selector: { boolean: {} } },
+          { name: "invert_battery_view", label: "Invert Battery View", selector: { boolean: {} } },
+          { name: "show_plus", label: "Show + Sign", selector: { boolean: {} } }
+        ]
+      };
+    }
+    connectedCallback() {
+      this._resizeObserver = new ResizeObserver(() => {
+      });
+      if (this.parentElement) {
+        this._resizeObserver.observe(this.parentElement);
+      }
+      this._resizeObserver.observe(this);
+    }
+    disconnectedCallback() {
+      if (this._resizeObserver) {
+        this._resizeObserver.disconnect();
+        this._resizeObserver = null;
+      }
+      if (this._defaultRenderer) {
+        this._defaultRenderer.stop();
+      }
+      if (this._chartRenderer) {
+        this._chartRenderer.cleanup();
+      }
+    }
+    setConfig(config) {
+      this._config = this._normalizeConfig(config);
+      this._renderSafely("setConfig");
+    }
+    set hass(hass) {
+      this._hass = hass;
+      this._renderSafely("hass update");
+    }
+    _renderSafely(context) {
+      try {
+        this._render();
+      } catch (error) {
+        console.error("[EnergyFlowCard] render failed during", context, error);
+        this.innerHTML = `
+        <ha-card>
+          <div style="padding:16px;">
+            Energy Flow Card failed to render. Check browser console for details.
+          </div>
+        </ha-card>
+      `;
+      }
+    }
+    _render() {
+      if (!this._config || !this._hass) return;
+      if (!this._config.load) return;
+      const gridState = this._getEntityState(this._config.grid?.entity);
+      const loadState = this._getEntityState(this._config.load.entity);
+      const productionState = this._getEntityState(this._config.production?.entity);
+      const batteryState = this._getEntityState(this._config.battery?.entity);
+      const grid = parseFloat(gridState?.state ?? "0") || 0;
+      const load = parseFloat(loadState?.state ?? "0") || 0;
+      const production = parseFloat(productionState?.state ?? "0") || 0;
+      let battery = parseFloat(batteryState?.state ?? "0") || 0;
+      if (this._config.battery?.invert?.data) {
+        battery = -battery;
+      }
+      const viewMode = this._config.mode || "default";
+      if (this._lastViewMode === "chart" && viewMode !== "chart" && this._chartRenderer) {
+        this._chartRenderer.cleanup();
+      }
+      if (viewMode === "compact" || viewMode === "compact-battery") {
+        this._renderCompactView(grid, load, production, battery, viewMode);
+        this._lastViewMode = viewMode;
+        return;
+      }
+      if (viewMode === "chart") {
+        if (!this._chartRenderer) {
+          const chartConfig = {
+            production_entity: this._config.production?.entity || "",
+            grid_entity: this._config.grid?.entity || "",
+            load_entity: this._config.load.entity,
+            battery_entity: this._config.battery?.entity || "",
+            invert_battery_data: this._config.battery?.invert?.data,
+            production_icon: this._config.production?.icon,
+            grid_icon: this._config.grid?.icon,
+            load_icon: this._config.load.icon,
+            battery_icon: this._config.battery?.icon,
+            production_tap_action: this._config.production?.tap,
+            grid_tap_action: this._config.grid?.tap,
+            load_tap_action: this._config.load.tap,
+            battery_tap_action: this._config.battery?.tap
+          };
+          this._chartRenderer = new ChartRenderer(this._hass, chartConfig, this._fireEvent.bind(this));
+        }
+        this._chartRenderer.updateLiveValues({ grid, load, production, battery });
+        this._chartRenderer.render(this);
+        this._lastViewMode = viewMode;
+        return;
+      }
+      if (!this._defaultRenderer) {
+        this._defaultRenderer = new DefaultRenderer(
+          this,
+          this._config,
+          this._hass,
+          this._getDisplayName.bind(this),
+          this._getIcon.bind(this),
+          this._fireEvent.bind(this)
+        );
+      }
+      const flows = this._calculateFlows(grid, production, load, battery);
+      this._defaultRenderer.render({ grid, load, production, battery, flows });
+      this._lastViewMode = viewMode;
+    }
+    _getEntityState(entityId) {
+      if (!entityId) return void 0;
+      return this._hass?.states?.[entityId];
+    }
+    _getEntityConfigByType(type) {
+      return this._config?.[type];
+    }
+    _getDisplayName(type, fallback) {
+      const entityConfig = this._getEntityConfigByType(type);
+      if (!entityConfig) return fallback;
+      if (entityConfig.name) {
+        return entityConfig.name;
+      }
+      if (entityConfig.entity) {
+        const entityState = this._getEntityState(entityConfig.entity);
+        if (entityState?.attributes?.friendly_name) {
+          return entityState.attributes.friendly_name;
+        }
+      }
+      return fallback;
+    }
+    _getIcon(type, fallback) {
+      const entityConfig = this._getEntityConfigByType(type);
+      if (!entityConfig) return fallback;
+      if (entityConfig.icon) {
+        return entityConfig.icon;
+      }
+      if (entityConfig.entity) {
+        const entityState = this._getEntityState(entityConfig.entity);
+        if (entityState?.attributes?.icon) {
+          return entityState.attributes.icon;
+        }
+      }
+      return fallback;
+    }
+    _handleAction(actionConfig, entityId) {
+      if (!this._hass) return;
+      const config = actionConfig || { action: "more-info" };
+      const action = config.action || "more-info";
+      switch (action) {
+        case "more-info":
+          const entityToShow = config.entity || entityId;
+          this._fireEvent("hass-more-info", { entityId: entityToShow });
+          break;
+        case "navigate":
+          if (config.navigation_path) {
+            history.pushState(null, "", config.navigation_path);
+            this._fireEvent("location-changed", { replace: config.navigation_replace || false });
+          }
+          break;
+        case "url":
+          if (config.url_path) {
+            window.open(config.url_path);
+          }
+          break;
+        case "toggle":
+          this._hass.callService("homeassistant", "toggle", { entity_id: entityId });
+          break;
+        case "perform-action":
+          if (config.perform_action) {
+            const [domain, service] = config.perform_action.split(".");
+            this._hass.callService(domain, service, config.data || {}, config.target);
+          }
+          break;
+        case "assist":
+          this._fireEvent("show-dialog", {
+            dialogTag: "ha-voice-command-dialog",
+            dialogParams: {
+              pipeline_id: config.pipeline_id || "last_used",
+              start_listening: config.start_listening
+            }
+          });
+          break;
+      }
+    }
+    _fireEvent(type, detail = {}) {
+      if (type === "call-service" && this._hass) {
+        this._hass.callService(detail.domain, detail.service, detail.service_data || {}, detail.target);
+        return;
+      }
+      const event = new CustomEvent(type, {
+        detail,
+        bubbles: true,
+        composed: true
+      });
+      this.dispatchEvent(event);
+    }
+    /**
+     * Calculate energy flows between meters based on sensor readings.
+     * Uses the tested calculateEnergyFlows function.
+     */
+    _calculateFlows(grid, production, load, battery) {
+      return calculateEnergyFlows({ grid, production, load, battery });
+    }
+    _renderCompactView(grid, load, production, battery, viewMode) {
+      if (!this._config || !this._hass) return;
+      if (!this._compactRenderer) {
+        this._compactRenderer = new CompactRenderer(
+          this,
+          this._config,
+          this._hass,
+          viewMode,
+          (type, fallback) => this._getIcon(type, fallback),
+          (action, entity) => this._handleAction(action, entity)
+        );
+      } else {
+        this._compactRenderer.setViewMode(viewMode);
+      }
+      const flows = this._calculateFlows(grid, production, load, battery);
+      let batterySoc = null;
+      if (this._config.battery?.soc_entity) {
+        const socState = this._getEntityState(this._config.battery.soc_entity);
+        batterySoc = parseFloat(socState?.state ?? "0") || 0;
+      }
+      this._compactRenderer.render({
+        grid,
+        load,
+        production,
+        battery,
+        flows,
+        batterySoc
+      });
+    }
+    _normalizeConfig(config) {
+      if (config.load) {
+        return config;
+      }
+      const normalizeEntity = (prefix) => {
+        const entityId = config[`${prefix}_entity`];
+        if (!entityId) return void 0;
+        const normalized = { entity: entityId };
+        const name = config[`${prefix}_name`];
+        const icon = config[`${prefix}_icon`];
+        const min = config[`${prefix}_min`];
+        const max = config[`${prefix}_max`];
+        const tap = config[`${prefix}_tap_action`];
+        const hold = config[`${prefix}_hold_action`];
+        if (name !== void 0) normalized.name = name;
+        if (icon !== void 0) normalized.icon = icon;
+        if (min !== void 0) normalized.min = min;
+        if (max !== void 0) normalized.max = max;
+        if (tap !== void 0) normalized.tap = tap;
+        if (hold !== void 0) normalized.hold = hold;
+        return normalized;
+      };
+      const load = normalizeEntity("load");
+      const grid = normalizeEntity("grid");
+      const production = normalizeEntity("production");
+      const batteryEntity = normalizeEntity("battery");
+      if (batteryEntity) {
+        const soc = config["battery_soc_entity"];
+        const invertData = config["invert_battery_data"];
+        const invertView = config["invert_battery_view"];
+        const showPlus = config["show_plus"];
+        if (soc !== void 0) batteryEntity.soc_entity = soc;
+        if (invertData !== void 0 || invertView !== void 0) {
+          batteryEntity.invert = {
+            data: invertData !== void 0 ? invertData : batteryEntity.invert?.data,
+            view: invertView !== void 0 ? invertView : batteryEntity.invert?.view
+          };
+        }
+        if (showPlus !== void 0) batteryEntity.showPlus = showPlus;
+      }
+      const mode = config.view_mode || config.mode;
+      if (!load) {
+        return config;
+      }
+      return {
+        mode,
+        load,
+        grid,
+        production,
+        battery: batteryEntity
+      };
+    }
+  }
+  const CARD_TAG = "energy-flow-card";
+  if (!customElements.get(CARD_TAG)) {
+    customElements.define(CARD_TAG, EnergyFlowCard);
+    console.info("[EnergyFlowCard] defined custom element");
+  } else {
+    console.info("[EnergyFlowCard] custom element already defined");
+  }
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "custom:energy-flow-card",
+    name: "Energy Flow Card",
+    description: "A test energy-flow card."
+  });
+})();
+//# sourceMappingURL=energy-flow-card.js.map
