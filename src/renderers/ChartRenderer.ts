@@ -190,6 +190,15 @@ export class ChartRenderer {
     this.chartDataCache = undefined;
   }
 
+  /** Hide the loading overlay once data is ready or on error */
+  private hideLoading(svgElement: Element): void {
+    const container = svgElement.parentElement;
+    const loading = container?.querySelector('.loading-message') as HTMLElement | null;
+    if (loading) {
+      loading.style.display = 'none';
+    }
+  }
+
   /**
    * Get icon name from config or use default
    */
@@ -261,6 +270,7 @@ export class ChartRenderer {
           Error loading chart data
         </text>
       `;
+      this.hideLoading(svgElement);
     }
   }
 
@@ -322,6 +332,7 @@ export class ChartRenderer {
     
     this.updateChartIndicators(svgElement);
     this.addLoadLineOnTop(svgElement, loadLine);
+    this.hideLoading(svgElement);
   }
 
   /**
@@ -462,6 +473,7 @@ export class ChartRenderer {
     `;
 
     svgElement.innerHTML = svgContent;
+    this.hideLoading(svgElement);
     
     // Add click handlers
     this.attachChartAreaClickHandlers(svgElement);
