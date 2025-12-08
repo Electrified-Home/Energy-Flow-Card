@@ -4,12 +4,13 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { ChartRenderer } from './ChartRenderer';
-import type { ChartConfig, LiveChartValues } from './ChartRenderer';
+import type { LiveChartValues } from './ChartRenderer';
 import type { HomeAssistant } from '../types/HASS';
+import type { EnergyFlowCardConfig } from '../types/Config.d.ts';
 
 describe('ChartRenderer', () => {
   let container: HTMLElement;
-  let config: ChartConfig;
+  let config: EnergyFlowCardConfig;
   let hass: HomeAssistant;
   let fireEvent: (type: string, detail?: any) => void;
   let renderer: ChartRenderer;
@@ -21,11 +22,11 @@ describe('ChartRenderer', () => {
 
     // Mock config
     config = {
-      production_entity: 'sensor.production',
-      grid_entity: 'sensor.grid',
-      load_entity: 'sensor.load',
-      battery_entity: 'sensor.battery',
-      invert_battery_data: false
+      mode: 'chart',
+      production: { entity: 'sensor.production' },
+      grid: { entity: 'sensor.grid' },
+      load: { entity: 'sensor.load' },
+      battery: { entity: 'sensor.battery', invert: { data: false } }
     };
 
     // Mock hass with required APIs
@@ -55,16 +56,12 @@ describe('ChartRenderer', () => {
     });
 
     it('should accept configuration', () => {
-      const customConfig: ChartConfig = {
-        production_entity: 'sensor.solar',
-        grid_entity: 'sensor.utility',
-        load_entity: 'sensor.consumption',
-        battery_entity: 'sensor.battery_power',
-        invert_battery_data: true,
-        production_icon: 'mdi:solar-panel',
-        grid_icon: 'mdi:flash',
-        load_icon: 'mdi:home',
-        battery_icon: 'mdi:battery-charging'
+      const customConfig: EnergyFlowCardConfig = {
+        mode: 'chart',
+        production: { entity: 'sensor.solar', icon: 'mdi:solar-panel' },
+        grid: { entity: 'sensor.utility', icon: 'mdi:flash' },
+        load: { entity: 'sensor.consumption', icon: 'mdi:home' },
+        battery: { entity: 'sensor.battery_power', invert: { data: true }, icon: 'mdi:battery-charging' }
       };
 
       const customRenderer = new ChartRenderer(hass, customConfig, fireEvent);
@@ -219,11 +216,12 @@ describe('ChartRenderer', () => {
 
   describe('edge cases', () => {
     it('should handle empty config', () => {
-      const emptyConfig = {
-        production_entity: '',
-        grid_entity: '',
-        load_entity: '',
-        battery_entity: ''
+      const emptyConfig: EnergyFlowCardConfig = {
+        mode: 'chart',
+        production: { entity: '' },
+        grid: { entity: '' },
+        load: { entity: '' },
+        battery: { entity: '' }
       };
 
       const emptyRenderer = new ChartRenderer(hass, emptyConfig, fireEvent);
@@ -283,12 +281,12 @@ describe('ChartRenderer', () => {
 
   describe('icon configuration', () => {
     it('should accept custom icons', () => {
-      const iconConfig: ChartConfig = {
+      const iconConfig: EnergyFlowCardConfig = {
         ...config,
-        production_icon: 'mdi:solar-panel',
-        grid_icon: 'mdi:transmission-tower',
-        load_icon: 'mdi:home-lightning-bolt',
-        battery_icon: 'mdi:battery-high'
+        production: { ...config.production!, icon: 'mdi:solar-panel' },
+        grid: { ...config.grid!, icon: 'mdi:transmission-tower' },
+        load: { ...config.load, icon: 'mdi:home-lightning-bolt' },
+        battery: { ...config.battery!, icon: 'mdi:battery-high' }
       };
 
       const iconRenderer = new ChartRenderer(hass, iconConfig, fireEvent);
@@ -296,11 +294,12 @@ describe('ChartRenderer', () => {
     });
 
     it('should handle missing icon config', () => {
-      const noIconConfig: ChartConfig = {
-        production_entity: 'sensor.production',
-        grid_entity: 'sensor.grid',
-        load_entity: 'sensor.load',
-        battery_entity: 'sensor.battery'
+      const noIconConfig: EnergyFlowCardConfig = {
+        mode: 'chart',
+        production: { entity: 'sensor.production' },
+        grid: { entity: 'sensor.grid' },
+        load: { entity: 'sensor.load' },
+        battery: { entity: 'sensor.battery' }
       };
 
       const noIconRenderer = new ChartRenderer(hass, noIconConfig, fireEvent);
@@ -310,12 +309,12 @@ describe('ChartRenderer', () => {
 
   describe('tap actions', () => {
     it('should accept tap action configuration', () => {
-      const tapConfig: ChartConfig = {
+      const tapConfig: EnergyFlowCardConfig = {
         ...config,
-        production_tap_action: { action: 'more-info' },
-        grid_tap_action: { action: 'toggle' },
-        load_tap_action: { action: 'navigate', path: '/energy' },
-        battery_tap_action: { action: 'call-service', service: 'switch.toggle' }
+        production: { ...config.production!, tap: { action: 'more-info' } },
+        grid: { ...config.grid!, tap: { action: 'toggle' } },
+        load: { ...config.load, tap: { action: 'navigate', path: '/energy' } },
+        battery: { ...config.battery!, tap: { action: 'call-service', service: 'switch.toggle' } }
       };
 
       const tapRenderer = new ChartRenderer(hass, tapConfig, fireEvent);
@@ -325,9 +324,9 @@ describe('ChartRenderer', () => {
 
   describe('battery invert data', () => {
     it('should handle inverted battery data', () => {
-      const invertConfig: ChartConfig = {
+      const invertConfig: EnergyFlowCardConfig = {
         ...config,
-        invert_battery_data: true
+        battery: { ...config.battery!, invert: { data: true } }
       };
 
       const invertRenderer = new ChartRenderer(hass, invertConfig, fireEvent);
@@ -335,9 +334,9 @@ describe('ChartRenderer', () => {
     });
 
     it('should handle non-inverted battery data', () => {
-      const normalConfig: ChartConfig = {
+      const normalConfig: EnergyFlowCardConfig = {
         ...config,
-        invert_battery_data: false
+        battery: { ...config.battery!, invert: { data: false } }
       };
 
       const normalRenderer = new ChartRenderer(hass, normalConfig, fireEvent);

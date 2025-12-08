@@ -1,21 +1,6 @@
 import { createGridLines, createTimeLabels, createYAxisLabels, createAreaPath, createLoadLine } from '../chart/chart-utils';
 import { handleAction } from '../utils/helpers';
-
-export interface ChartConfig {
-  production_entity: string;
-  grid_entity: string;
-  load_entity: string;
-  battery_entity: string;
-  invert_battery_data?: boolean;
-  production_icon?: string;
-  grid_icon?: string;
-  load_icon?: string;
-  battery_icon?: string;
-  production_tap_action?: any;
-  grid_tap_action?: any;
-  load_tap_action?: any;
-  battery_tap_action?: any;
-}
+import type { EnergyFlowCardConfig, EntityConfig } from '../types/Config.d.ts';
 
 export interface DataPoint {
   time: Date;
@@ -50,7 +35,7 @@ export interface ChartDataCache {
  */
 export class ChartRenderer {
   private hass: any;
-  private config: ChartConfig;
+  private config: EnergyFlowCardConfig;
   private fireEvent: (type: string, detail?: any) => void;
   private iconCache: Map<string, string> = new Map();
   private chartDataCache?: ChartDataCache;
@@ -59,13 +44,21 @@ export class ChartRenderer {
   private lastIndicatorUpdate = 0;
   private liveChartValues?: LiveChartValues;
 
-  constructor(hass: any, config: ChartConfig, fireEvent: (type: string, detail?: any) => void) {
+  private getEntityId(entityConfig?: EntityConfig): string {
+    return entityConfig?.entity || '';
+  }
+
+  private getTapAction(entityConfig?: EntityConfig): any {
+    return entityConfig?.tap;
+  }
+
+  constructor(hass: any, config: EnergyFlowCardConfig, fireEvent: (type: string, detail?: any) => void) {
     this.hass = hass;
     this.config = config;
     this.fireEvent = fireEvent;
   }
 
-  setConfig(config: ChartConfig): void {
+  setConfig(config: EnergyFlowCardConfig): void {
     this.config = config;
   }
 
@@ -206,13 +199,12 @@ export class ChartRenderer {
   /**
    * Get icon name from config or use default
    */
-  private getIcon(iconConfigKey: string, entityConfigKey: string, fallback: string): string {
-    const configIcon = (this.config as any)[iconConfigKey];
-    if (configIcon) return configIcon;
+  private getIcon(entityConfig: EntityConfig | undefined, fallback: string): string {
+    if (entityConfig?.icon) return entityConfig.icon;
 
-    const entityId = (this.config as any)[entityConfigKey];
-    if (entityId && this.hass.states[entityId]) {
-      const entityIcon = this.hass.states[entityId].attributes.icon;
+    const entityId = entityConfig?.entity;
+    if (entityId && this.hass?.states?.[entityId]) {
+      const entityIcon = this.hass.states[entityId].attributes?.icon;
       if (entityIcon) return entityIcon;
     }
 
@@ -249,10 +241,10 @@ export class ChartRenderer {
     try {
       // Fetch history for all entities in parallel
       const [productionHistory, gridHistory, loadHistory, batteryHistory] = await Promise.all([
-        this.fetchHistory(this.config.production_entity, start, end),
-        this.fetchHistory(this.config.grid_entity, start, end),
-        this.fetchHistory(this.config.load_entity, start, end),
-        this.fetchHistory(this.config.battery_entity, start, end),
+        this.fetchHistory(this.getEntityId(this.config.production), start, end),
+        this.fetchHistory(this.getEntityId(this.config.grid), start, end),
+        this.fetchHistory(this.getEntityId(this.config.load), start, end),
+        this.fetchHistory(this.getEntityId(this.config.battery), start, end),
       ]);
 
       // Process chart
@@ -282,6 +274,7 @@ export class ChartRenderer {
    * Fetch history from Home Assistant
    */
   private async fetchHistory(entityId: string, start: Date, end: Date): Promise<Array<{ state: string; last_changed: string }>> {
+    if (!entityId) return [];
     const url = `history/period/${start.toISOString()}?filter_entity_id=${entityId}&end_time=${end.toISOString()}&minimal_response&no_attributes`;
     
     const response = await this.hass.callApi('GET', url);
@@ -388,7 +381,7 @@ export class ChartRenderer {
         const load = this.interpolateValue(loadHistory, time);
         let battery = this.interpolateValue(batteryHistory, time);
         
-        if (this.config.invert_battery_data) {
+        if (this.config.battery?.invert?.data) {
           battery = -battery;
         }
 
@@ -566,10 +559,10 @@ export class ChartRenderer {
    * Create hidden icon sources for extraction
    */
   private createChartIconSources(): string {
-    const loadIcon = this.getIcon('load_icon', 'load_entity', 'mdi:home-lightning-bolt');
-    const solarIcon = this.getIcon('production_icon', 'production_entity', 'mdi:solar-power');
-    const batteryIcon = this.getIcon('battery_icon', 'battery_entity', 'mdi:battery');
-    const gridIcon = this.getIcon('grid_icon', 'grid_entity', 'mdi:transmission-tower');
+    const loadIcon = this.getIcon(this.config.load, 'mdi:home-lightning-bolt');
+    const solarIcon = this.getIcon(this.config.production, 'mdi:solar-power');
+    const batteryIcon = this.getIcon(this.config.battery, 'mdi:battery');
+    const gridIcon = this.getIcon(this.config.grid, 'mdi:transmission-tower');
 
     return `
       <foreignObject id="chart-icon-source-load" x="-100" y="-100" width="24" height="24">
@@ -803,12 +796,12 @@ export class ChartRenderer {
     };
 
     // Update all indicators
-    updateIndicator('indicator-solar', solarY, '#388e3c', 'solar', formatValue(currentValues.solar), '', currentValues.solar > 0, this.config.production_entity, this.config.production_tap_action);
-    updateIndicator('indicator-battery-discharge', batteryDischargeY, '#1976d2', 'battery', formatValue(currentValues.batteryDischarge), '+', currentValues.batteryDischarge > 0, this.config.battery_entity, this.config.battery_tap_action);
-    updateIndicator('indicator-grid-import', gridImportY, '#c62828', 'grid', formatValue(currentValues.gridImport), '', currentValues.gridImport > 0, this.config.grid_entity, this.config.grid_tap_action);
-    updateIndicator('indicator-battery-charge', batteryChargeY, '#1976d2', 'battery', formatValue(currentValues.batteryCharge), '-', currentValues.batteryCharge > 0, this.config.battery_entity, this.config.battery_tap_action);
-    updateIndicator('indicator-grid-export', gridExportY, '#f9a825', 'grid', formatValue(currentValues.gridExport), '', currentValues.gridExport > 0, this.config.grid_entity, this.config.grid_tap_action);
-    updateIndicator('indicator-load', loadY, '#CCCCCC', 'load', formatValue(currentValues.load), '', true, this.config.load_entity, this.config.load_tap_action);
+    updateIndicator('indicator-solar', solarY, '#388e3c', 'solar', formatValue(currentValues.solar), '', currentValues.solar > 0, this.getEntityId(this.config.production), this.getTapAction(this.config.production));
+    updateIndicator('indicator-battery-discharge', batteryDischargeY, '#1976d2', 'battery', formatValue(currentValues.batteryDischarge), '+', currentValues.batteryDischarge > 0, this.getEntityId(this.config.battery), this.getTapAction(this.config.battery));
+    updateIndicator('indicator-grid-import', gridImportY, '#c62828', 'grid', formatValue(currentValues.gridImport), '', currentValues.gridImport > 0, this.getEntityId(this.config.grid), this.getTapAction(this.config.grid));
+    updateIndicator('indicator-battery-charge', batteryChargeY, '#1976d2', 'battery', formatValue(currentValues.batteryCharge), '-', currentValues.batteryCharge > 0, this.getEntityId(this.config.battery), this.getTapAction(this.config.battery));
+    updateIndicator('indicator-grid-export', gridExportY, '#f9a825', 'grid', formatValue(currentValues.gridExport), '', currentValues.gridExport > 0, this.getEntityId(this.config.grid), this.getTapAction(this.config.grid));
+    updateIndicator('indicator-load', loadY, '#CCCCCC', 'load', formatValue(currentValues.load), '', true, this.getEntityId(this.config.load), this.getTapAction(this.config.load));
   }
 
   /**
@@ -840,8 +833,15 @@ export class ChartRenderer {
 
     // Get cached icon paths
     const iconPaths: { [key: string]: string | null } = {};
+    const entityMap: Record<string, EntityConfig | undefined> = {
+      load: this.config.load,
+      solar: this.config.production,
+      battery: this.config.battery,
+      grid: this.config.grid,
+    };
+
     ['load', 'solar', 'battery', 'grid'].forEach(type => {
-      const iconName = this.getIcon(`${type}_icon`, `${type}_entity`, '');
+      const iconName = this.getIcon(entityMap[type], '');
       if (this.iconCache.has(iconName)) {
         iconPaths[type] = this.iconCache.get(iconName) || null;
       }
@@ -876,7 +876,7 @@ export class ChartRenderer {
     path.style.cursor = 'pointer';
     
     path.addEventListener('click', () => {
-      handleAction(this.hass, this.fireEvent, this.config.load_tap_action, this.config.load_entity);
+      handleAction(this.hass, this.fireEvent, this.getTapAction(this.config.load), this.getEntityId(this.config.load));
     });
     
     svgElement.appendChild(path);
@@ -889,35 +889,35 @@ export class ChartRenderer {
     const solarArea = svgElement.querySelector('#chart-area-solar');
     if (solarArea) {
       solarArea.addEventListener('click', () => {
-        handleAction(this.hass, this.fireEvent, this.config.production_tap_action, this.config.production_entity);
+        handleAction(this.hass, this.fireEvent, this.getTapAction(this.config.production), this.getEntityId(this.config.production));
       });
     }
     
     const batteryDischargeArea = svgElement.querySelector('#chart-area-battery-discharge');
     if (batteryDischargeArea) {
       batteryDischargeArea.addEventListener('click', () => {
-        handleAction(this.hass, this.fireEvent, this.config.battery_tap_action, this.config.battery_entity);
+        handleAction(this.hass, this.fireEvent, this.getTapAction(this.config.battery), this.getEntityId(this.config.battery));
       });
     }
     
     const batteryChargeArea = svgElement.querySelector('#chart-area-battery-charge');
     if (batteryChargeArea) {
       batteryChargeArea.addEventListener('click', () => {
-        handleAction(this.hass, this.fireEvent, this.config.battery_tap_action, this.config.battery_entity);
+        handleAction(this.hass, this.fireEvent, this.getTapAction(this.config.battery), this.getEntityId(this.config.battery));
       });
     }
     
     const gridImportArea = svgElement.querySelector('#chart-area-grid-import');
     if (gridImportArea) {
       gridImportArea.addEventListener('click', () => {
-        handleAction(this.hass, this.fireEvent, this.config.grid_tap_action, this.config.grid_entity);
+        handleAction(this.hass, this.fireEvent, this.getTapAction(this.config.grid), this.getEntityId(this.config.grid));
       });
     }
     
     const gridExportArea = svgElement.querySelector('#chart-area-grid-export');
     if (gridExportArea) {
       gridExportArea.addEventListener('click', () => {
-        handleAction(this.hass, this.fireEvent, this.config.grid_tap_action, this.config.grid_entity);
+        handleAction(this.hass, this.fireEvent, this.getTapAction(this.config.grid), this.getEntityId(this.config.grid));
       });
     }
   }

@@ -120,26 +120,10 @@ class EnergyFlowCard extends HTMLElement {
       return;
     }
     if (viewMode === 'chart') {
-      const chartConfig = {
-        production_entity: this._config.production?.entity || '',
-        grid_entity: this._config.grid?.entity || '',
-        load_entity: this._config.load.entity,
-        battery_entity: this._config.battery?.entity || '',
-        invert_battery_data: this._config.battery?.invert?.data,
-        production_icon: this._config.production?.icon,
-        grid_icon: this._config.grid?.icon,
-        load_icon: this._config.load.icon,
-        battery_icon: this._config.battery?.icon,
-        production_tap_action: this._config.production?.tap,
-        grid_tap_action: this._config.grid?.tap,
-        load_tap_action: this._config.load.tap,
-        battery_tap_action: this._config.battery?.tap
-      } as const;
-
       if (!this._chartRenderer) {
-        this._chartRenderer = new ChartRenderer(this._hass, chartConfig, this._fireEvent.bind(this));
+        this._chartRenderer = new ChartRenderer(this._hass, this._config, this._fireEvent.bind(this));
       } else {
-        this._chartRenderer.setConfig(chartConfig);
+        this._chartRenderer.setConfig(this._config);
       }
       
       this._chartRenderer.updateLiveValues({ grid, load, production, battery });
