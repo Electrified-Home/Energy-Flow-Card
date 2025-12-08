@@ -7,10 +7,10 @@
  * - 'compact-battery': Shows load bar + battery bar
  */
 
-import type { EnergyFlowCardConfig } from '../types/Config.d.ts';
-import type { HomeAssistant } from '../types/HASS.d.ts';
-import type { EnergyFlows } from '../types/EnergyFlow.d.ts';
-import { updateSegmentVisibility } from '../utils/helpers';
+import type { EnergyFlowCardConfig } from '../../shared/src/types/Config.d.ts';
+import type { HomeAssistant } from '../../shared/src/types/HASS.d.ts';
+import type { EnergyFlows } from '../../shared/src/types/EnergyFlow.d.ts';
+import { updateSegmentVisibility } from '../../shared/src/utils/helpers';
 
 export type CompactViewMode = 'compact' | 'compact-battery';
 

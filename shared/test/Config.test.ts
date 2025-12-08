@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getConfigForm, normalizeConfig } from './Config';
+import { getConfigForm, normalizeConfig } from '../src/Config';
 
 describe('Config helpers', () => {
   it('getConfigForm returns expected core fields', () => {

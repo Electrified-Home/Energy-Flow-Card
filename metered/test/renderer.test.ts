@@ -3,10 +3,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { DefaultRenderer } from './DefaultRenderer';
-import type { DefaultRenderData } from './DefaultRenderer';
-import type { EnergyFlowCardConfig } from '../types/Config.d.ts';
-import type { HomeAssistant } from '../types/HASS.d.ts';
+import { DefaultRenderer, type DefaultRenderData } from '../src/renderer';
+import type { EnergyFlowCardConfig } from '../../shared/src/types/Config';
+import type { HomeAssistant } from '../../shared/src/types/HASS';
 
 describe('DefaultRenderer', () => {
   let container: HTMLElement;

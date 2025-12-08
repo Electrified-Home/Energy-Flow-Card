@@ -9,7 +9,7 @@ export interface NeedleState {
 }
 
 /** Action configuration (imported from Config types) */
-import type { ActionConfig } from './types/Config.d.ts';
+import type { ActionConfig } from '../../shared/src/types/Config.js';
 
 /**
  * Meter class: Fully self-contained gauge meter with rendering and animation

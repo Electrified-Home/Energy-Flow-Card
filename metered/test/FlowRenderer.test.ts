@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { FlowRenderer } from './FlowRenderer';
-import type { Position } from './FlowRenderer';
+import { FlowRenderer } from '../src/FlowRenderer';
+import type { Position } from '../src/FlowRenderer';
 
 describe('FlowRenderer', () => {
   let container: SVGElement;

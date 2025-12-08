@@ -3,10 +3,10 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { CompactRenderer } from './CompactRenderer';
-import type { CompactRenderData, CompactViewMode, EntityType } from './CompactRenderer';
-import type { EnergyFlowCardConfig } from '../types/Config.d.ts';
-import type { HomeAssistant } from '../types/HASS.d.ts';
+import { CompactRenderer } from '../src/renderer';
+import type { CompactRenderData, CompactViewMode, EntityType } from '../src/renderer';
+import type { EnergyFlowCardConfig } from '../../shared/src/types/Config';
+import type { HomeAssistant } from '../../shared/src/types/HASS';
 
 describe('CompactRenderer', () => {
   let container: HTMLElement;

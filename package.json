@@ -4,7 +4,9 @@
   "description": "Home Assistant Energy Flow Card",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "pnpm typecheck && pnpm lint && pwsh -File build-cards.ps1",
+    "build": "pnpm typecheck && pnpm lint && pnpm build:compact && pnpm build:metered",
+    "build:compact": "vite build --config compact/vite.config.ts",
+    "build:metered": "vite build --config metered/vite.config.ts",
     "build:debug": "pnpm typecheck && pnpm lint && vite build -- --debug-build",
     "dev": "vite",
     "preview": "vite preview",
@@ -14,11 +16,11 @@
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
+    "@types/node": "^24.10.1",
     "@typescript-eslint/eslint-plugin": "^8.48.1",
     "@typescript-eslint/parser": "^8.48.1",
     "@vitest/coverage-v8": "^4.0.15",
     "@vitest/ui": "^4.0.15",
-    "concurrently": "^8.2.2",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.4",

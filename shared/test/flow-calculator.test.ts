@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { calculateEnergyFlows } from './flow-calculator';
-import type { SensorValues } from './types/EnergyFlow';
+import { calculateEnergyFlows } from '../src/flow-calculator';
+import type { SensorValues } from '../src/types/EnergyFlow';
 
 describe('calculateEnergyFlows', () => {
   describe('Production to Load', () => {

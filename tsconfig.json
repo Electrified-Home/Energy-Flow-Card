@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     // Output configuration - use bundler for single file
-    "outDir": "./dist",
     "module": "ESNext",
     "target": "ES2020",
     
@@ -37,11 +36,19 @@
     // Lib
     "lib": ["ES2020", "DOM"],
     
-    // Test globals
-    "types": ["vitest/globals"]
+    // Test globals and Node for config files
+    "types": ["vitest/globals", "node"]
   },
   "include": [
-    "src/**/*.ts"
+    "compact/src/**/*.ts",
+    "metered/src/**/*.ts",
+    "shared/src/**/*.ts",
+    "compact/test/**/*.ts",
+    "metered/test/**/*.ts",
+    "shared/test/**/*.ts",
+    "vite.config.ts",
+    "compact/vite.config.ts",
+    "metered/vite.config.ts"
   ],
   "exclude": [
     "node_modules"

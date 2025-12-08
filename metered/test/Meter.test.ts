@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { Meter } from './Meter';
+import { Meter } from '../src/Meter';
 
 describe('Meter', () => {
   describe('Constructor and Initialization', () => {

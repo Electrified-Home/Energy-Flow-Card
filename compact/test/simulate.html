@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compact Home Energy Flow Card - Simulator</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #111;
+      color: #fff;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .card-wrapper {
+      margin: 20px 0;
+      background: #1c1c1c;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .controls {
+      background: #2c2c2c;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
+    .control-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+      color: #aaa;
+    }
+    input[type="range"] {
+      width: 100%;
+    }
+    .value-display {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Compact Home Energy Flow Card - Simulator</h1>
+    
+    <div class="controls">
+      <div class="control-group">
+        <label for="grid">Grid: <span class="value-display" id="grid-value">0 W</span></label>
+        <input type="range" id="grid" min="-5000" max="5000" value="0" step="50">
+      </div>
+      
+      <div class="control-group">
+        <label for="production">Production: <span class="value-display" id="production-value">0 W</span></label>
+        <input type="range" id="production" min="0" max="8000" value="0" step="50">
+      </div>
+      
+      <div class="control-group">
+        <label for="load">Load: <span class="value-display" id="load-value">1000 W</span></label>
+        <input type="range" id="load" min="0" max="8000" value="1000" step="50">
+      </div>
+      
+      <div class="control-group">
+        <label for="battery">Battery: <span class="value-display" id="battery-value">0 W</span></label>
+        <input type="range" id="battery" min="-3000" max="3000" value="0" step="50">
+      </div>
+      
+      <div class="control-group">
+        <label for="soc">Battery SOC: <span class="value-display" id="soc-value">50 %</span></label>
+        <input type="range" id="soc" min="0" max="100" value="50" step="1">
+      </div>
+    </div>
+    
+    <div class="card-wrapper">
+      <compact-home-energy-flow-card id="card"></compact-home-energy-flow-card>
+    </div>
+  </div>
+
+  <script type="module" src="../../dist/compact-home-energy-flow-card.js"></script>
+  <script>
+    // Mock Home Assistant interface
+    const mockHass = {
+      states: {
+        'sensor.grid': { state: '0', attributes: {} },
+        'sensor.load': { state: '1000', attributes: {} },
+        'sensor.production': { state: '0', attributes: {} },
+        'sensor.battery': { state: '0', attributes: {} },
+        'sensor.battery_soc': { state: '50', attributes: {} }
+      },
+      callService: (domain, service, data) => {
+        console.log('Service called:', domain, service, data);
+      }
+    };
+
+    // Initialize card
+    const card = document.getElementById('card');
+    
+    card.setConfig({
+      grid_entity: 'sensor.grid',
+      load_entity: 'sensor.load',
+      production_entity: 'sensor.production',
+      battery_entity: 'sensor.battery',
+      battery_soc_entity: 'sensor.battery_soc'
+    });
+    
+    card.hass = mockHass;
+
+    // Update function
+    function updateCard() {
+      const grid = parseInt(document.getElementById('grid').value);
+      const production = parseInt(document.getElementById('production').value);
+      const load = parseInt(document.getElementById('load').value);
+      const battery = parseInt(document.getElementById('battery').value);
+      const soc = parseInt(document.getElementById('soc').value);
+
+      mockHass.states['sensor.grid'].state = grid.toString();
+      mockHass.states['sensor.production'].state = production.toString();
+      mockHass.states['sensor.load'].state = load.toString();
+      mockHass.states['sensor.battery'].state = battery.toString();
+      mockHass.states['sensor.battery_soc'].state = soc.toString();
+
+      document.getElementById('grid-value').textContent = `${grid} W`;
+      document.getElementById('production-value').textContent = `${production} W`;
+      document.getElementById('load-value').textContent = `${load} W`;
+      document.getElementById('battery-value').textContent = `${battery} W`;
+      document.getElementById('soc-value').textContent = `${soc} %`;
+
+      card.hass = { ...mockHass };
+    }
+
+    // Add event listeners
+    ['grid', 'production', 'load', 'battery', 'soc'].forEach(id => {
+      document.getElementById(id).addEventListener('input', updateCard);
+    });
+
+    // Initial update
+    updateCard();
+  </script>
+</body>
+</html>

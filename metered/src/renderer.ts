@@ -5,10 +5,10 @@
  * Works with Meter instances - does not abstract them away.
  */
 
-import { Meter } from '../Meter';
-import type { EnergyFlowCardConfig } from '../types/Config.d.ts';
-import type { HomeAssistant } from '../types/HASS.d.ts';
-import type { EnergyFlows } from '../types/EnergyFlow.d.ts';
+import { Meter } from './Meter';
+import type { EnergyFlowCardConfig } from '../../shared/src/types/Config';
+import type { HomeAssistant } from '../../shared/src/types/HASS';
+import type { EnergyFlows } from '../../shared/src/types/EnergyFlow';
 import { FlowRenderer } from './FlowRenderer';
 import type { Position } from './FlowRenderer';
 

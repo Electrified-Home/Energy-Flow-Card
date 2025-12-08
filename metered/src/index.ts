@@ -1,55 +1,69 @@
-import { calculateEnergyFlows } from './flow-calculator';
-import { getIcon, handleAction } from './utils/helpers';
-import type { EnergyFlowCardConfig } from './types/Config.d.ts';
-import type { HomeAssistant } from './types/HASS.d.ts';
-import { CompactRenderer } from './renderers/CompactRenderer';
-import type { CompactViewMode } from './renderers/CompactRenderer';
+import { calculateEnergyFlows } from '../../shared/src/flow-calculator';
+import { getDisplayName, getIcon } from '../../shared/src/utils/helpers';
+import type { EnergyFlowCardConfig, BatteryEntityConfig, EntityConfig } from '../../shared/src/types/Config.d.ts';
+import type { HomeAssistant } from '../../shared/src/types/HASS.d.ts';
+import { DefaultRenderer } from './renderer';
 
-// Compact card-specific config form (simplified, no names, no min/max, auto-detect 2nd bar)
-function getCompactConfigForm() {
+// Simplified config form for metered card (no view mode selector, includes names)
+function getMeteredConfigForm() {
   return {
     schema: [
       { name: 'grid_entity', label: 'Grid', required: true, selector: { entity: { domain: 'sensor', device_class: 'power' } } },
+      { name: 'grid_name', selector: { entity_name: {} }, context: { entity: 'grid_entity' } },
       { name: 'grid_icon', selector: { icon: {} }, context: { icon_entity: 'grid_entity' } },
+      { name: 'grid_min', label: 'Grid Min (W)', selector: { number: { mode: 'box' } } },
+      { name: 'grid_max', label: 'Grid Max (W)', selector: { number: { mode: 'box' } } },
       { name: 'grid_tap_action', label: 'Grid Tap Action', selector: { 'ui-action': {} } },
       { name: 'grid_hold_action', label: 'Grid Hold Action', selector: { 'ui-action': {} } },
-      
       { name: 'load_entity', label: 'Load', required: true, selector: { entity: { domain: 'sensor', device_class: 'power' } } },
+      { name: 'load_name', selector: { entity_name: {} }, context: { entity: 'load_entity' } },
       { name: 'load_icon', selector: { icon: {} }, context: { icon_entity: 'load_entity' } },
+      { name: 'load_max', label: 'Load Max (W)', selector: { number: { mode: 'box' } } },
       { name: 'load_tap_action', label: 'Load Tap Action', selector: { 'ui-action': {} } },
       { name: 'load_hold_action', label: 'Load Hold Action', selector: { 'ui-action': {} } },
-      
       { name: 'production_entity', label: 'Production', required: true, selector: { entity: { domain: 'sensor', device_class: 'power' } } },
+      { name: 'production_name', selector: { entity_name: {} }, context: { entity: 'production_entity' } },
       { name: 'production_icon', selector: { icon: {} }, context: { icon_entity: 'production_entity' } },
+      { name: 'production_max', label: 'Production Max (W)', selector: { number: { mode: 'box' } } },
       { name: 'production_tap_action', label: 'Production Tap Action', selector: { 'ui-action': {} } },
       { name: 'production_hold_action', label: 'Production Hold Action', selector: { 'ui-action': {} } },
-      
       { name: 'battery_entity', label: 'Battery', required: true, selector: { entity: { domain: 'sensor', device_class: 'power' } } },
+      { name: 'battery_name', selector: { entity_name: {} }, context: { entity: 'battery_entity' } },
       { name: 'battery_icon', selector: { icon: {} }, context: { icon_entity: 'battery_entity' } },
+      { name: 'battery_min', label: 'Battery Min (W)', selector: { number: { mode: 'box' } } },
+      { name: 'battery_max', label: 'Battery Max (W)', selector: { number: { mode: 'box' } } },
       { name: 'battery_tap_action', label: 'Battery Tap Action', selector: { 'ui-action': {} } },
       { name: 'battery_hold_action', label: 'Battery Hold Action', selector: { 'ui-action': {} } },
       { name: 'battery_soc_entity', label: 'Battery SOC (%) Entity', selector: { entity: { domain: 'sensor' } } },
       { name: 'invert_battery_data', label: 'Invert Battery Data', selector: { boolean: {} } },
+      { name: 'invert_battery_view', label: 'Invert Battery View', selector: { boolean: {} } },
+      { name: 'show_plus', label: 'Show + Sign', selector: { boolean: {} } },
     ],
   };
 }
 
-// Normalize flat config to nested structure (no names)
-function normalizeCompactConfig(config: any): EnergyFlowCardConfig {
-  if (config.load) {
+// Normalize flat config to nested structure (includes names)
+function normalizeMeteredConfig(config: EnergyFlowCardConfig | Record<string, any>): EnergyFlowCardConfig {
+  if ((config as EnergyFlowCardConfig).load) {
     return config as EnergyFlowCardConfig;
   }
 
-  const normalizeEntity = (prefix: string): any => {
-    const entityId = config[`${prefix}_entity`];
+  const normalizeEntity = (prefix: string): EntityConfig | undefined => {
+    const entityId = (config as any)[`${prefix}_entity`];
     if (!entityId) return undefined;
 
-    const normalized: any = { entity: entityId };
-    const icon = config[`${prefix}_icon`];
-    const tap = config[`${prefix}_tap_action`];
-    const hold = config[`${prefix}_hold_action`];
+    const normalized: EntityConfig = { entity: entityId };
+    const name = (config as any)[`${prefix}_name`];
+    const icon = (config as any)[`${prefix}_icon`];
+    const min = (config as any)[`${prefix}_min`];
+    const max = (config as any)[`${prefix}_max`];
+    const tap = (config as any)[`${prefix}_tap_action`];
+    const hold = (config as any)[`${prefix}_hold_action`];
 
+    if (name !== undefined) normalized.name = name;
     if (icon !== undefined) normalized.icon = icon;
+    if (min !== undefined) normalized.min = min;
+    if (max !== undefined) normalized.max = max;
     if (tap !== undefined) normalized.tap = tap;
     if (hold !== undefined) normalized.hold = hold;
 
@@ -59,16 +73,22 @@ function normalizeCompactConfig(config: any): EnergyFlowCardConfig {
   const load = normalizeEntity('load');
   const grid = normalizeEntity('grid');
   const production = normalizeEntity('production');
-  const battery = normalizeEntity('battery');
+  const batteryEntity = normalizeEntity('battery') as BatteryEntityConfig | undefined;
 
-  if (battery) {
-    const soc = config['battery_soc_entity'];
-    const invertData = config['invert_battery_data'];
+  if (batteryEntity) {
+    const soc = (config as any)['battery_soc_entity'];
+    const invertData = (config as any)['invert_battery_data'];
+    const invertView = (config as any)['invert_battery_view'];
+    const showPlus = (config as any)['show_plus'];
 
-    if (soc !== undefined) battery.soc_entity = soc;
-    if (invertData !== undefined) {
-      battery.invert = { data: invertData };
+    if (soc !== undefined) batteryEntity.soc_entity = soc;
+    if (invertData !== undefined || invertView !== undefined) {
+      batteryEntity.invert = {
+        data: invertData !== undefined ? invertData : batteryEntity.invert?.data,
+        view: invertView !== undefined ? invertView : batteryEntity.invert?.view,
+      };
     }
+    if (showPlus !== undefined) batteryEntity.showPlus = showPlus;
   }
 
   if (!load) {
@@ -79,16 +99,16 @@ function normalizeCompactConfig(config: any): EnergyFlowCardConfig {
     load,
     grid,
     production,
-    battery,
+    battery: batteryEntity,
   };
 }
 
-// Main compact card class
-class CompactHomeEnergyFlowCard extends HTMLElement {
+// Main card class
+class MeteredHomeEnergyFlowCard extends HTMLElement {
   private _resizeObserver: ResizeObserver | null;
   private _config?: EnergyFlowCardConfig;
   private _hass?: HomeAssistant;
-  private _compactRenderer?: CompactRenderer;
+  private _defaultRenderer?: DefaultRenderer;
 
   constructor() {
     super();
@@ -100,12 +120,16 @@ class CompactHomeEnergyFlowCard extends HTMLElement {
   }
 
   static getConfigForm() {
-    return getCompactConfigForm();
+    return getMeteredConfigForm();
   }
 
   connectedCallback() {
-    this._resizeObserver = new ResizeObserver(() => {});
+    // Set up resize observer to redraw flows when card is resized
+    this._resizeObserver = new ResizeObserver(() => {
+      // Renderers handle their own resize logic
+    });
     
+    // Observe the container, not the card itself
     if (this.parentElement) {
       this._resizeObserver.observe(this.parentElement);
     }
@@ -117,10 +141,15 @@ class CompactHomeEnergyFlowCard extends HTMLElement {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
     }
+    
+    // Stop renderers
+    if (this._defaultRenderer) {
+      this._defaultRenderer.stop();
+    }
   }
 
-  setConfig(config: any): void {
-    this._config = normalizeCompactConfig(config);
+  setConfig(config: EnergyFlowCardConfig): void {
+    this._config = normalizeMeteredConfig(config);
     this._renderSafely('setConfig');
   }
 
@@ -133,11 +162,11 @@ class CompactHomeEnergyFlowCard extends HTMLElement {
     try {
       this._render();
     } catch (error) {
-      console.error('[CompactHomeEnergyFlowCard] render failed during', context, error);
+      console.error('[MeteredHomeEnergyFlowCard] render failed during', context, error);
       this.innerHTML = `
         <ha-card>
           <div style="padding:16px;">
-            Compact Home Energy Flow Card failed to render. Check browser console for details.
+            Metered Home Energy Flow Card failed to render. Check browser console for details.
           </div>
         </ha-card>
       `;
@@ -146,61 +175,41 @@ class CompactHomeEnergyFlowCard extends HTMLElement {
 
   _render() {
     if (!this._config || !this._hass) return;
-    if (!this._config.load) return;
+    if (!this._config.load) return; // Load entity is required
 
     const gridState = this._getEntityState(this._config.grid?.entity);
     const loadState = this._getEntityState(this._config.load.entity);
     const productionState = this._getEntityState(this._config.production?.entity);
     const batteryState = this._getEntityState(this._config.battery?.entity);
 
+    // Calculate flow directions and magnitudes
     const grid = parseFloat(gridState?.state ?? '0') || 0;
     const load = parseFloat(loadState?.state ?? '0') || 0;
     const production = parseFloat(productionState?.state ?? '0') || 0;
     let battery = parseFloat(batteryState?.state ?? '0') || 0;
     
-    // Invert battery data if configured
+    // Invert battery data if configured (affects interpretation)
     if (this._config.battery?.invert?.data) {
       battery = -battery;
     }
 
-    // Auto-detect view mode based on SOC entity presence
-    const hasSoc = !!this._config.battery?.soc_entity;
-    const viewMode: CompactViewMode = hasSoc ? 'compact-battery' : 'compact';
-
-    // Initialize CompactRenderer if needed
-    if (!this._compactRenderer) {
-      this._compactRenderer = new CompactRenderer(
+    // Initialize DefaultRenderer if needed (flow diagram mode)
+    if (!this._defaultRenderer) {
+      this._defaultRenderer = new DefaultRenderer(
         this,
         this._config,
         this._hass,
-        viewMode,
+        (type, fallback) => getDisplayName(this._config!, this._hass, type, fallback),
         (type, fallback) => getIcon(this._config!, this._hass, type, fallback),
-        (action, entity) => handleAction(this._hass as HomeAssistant, this._fireEvent.bind(this), action, entity)
+        this._fireEvent.bind(this)
       );
     } else {
-      this._compactRenderer.setConfig(this._config);
-      this._compactRenderer.setViewMode(viewMode);
+      this._defaultRenderer.setConfig(this._config);
     }
-
-    // Calculate flows
+    
+    // Calculate flows and render
     const flows = calculateEnergyFlows({ grid, production, load, battery });
-
-    // Get battery SOC if available
-    let batterySoc: number | null = null;
-    if (this._config.battery?.soc_entity) {
-      const socState = this._getEntityState(this._config.battery.soc_entity);
-      batterySoc = parseFloat(socState?.state ?? '0') || 0;
-    }
-
-    // Render
-    this._compactRenderer.render({
-      grid,
-      load,
-      production,
-      battery,
-      flows,
-      batterySoc
-    });
+    this._defaultRenderer.render({ grid, load, production, battery, flows });
   }
 
   private _getEntityState(entityId: string | undefined) {
@@ -209,6 +218,7 @@ class CompactHomeEnergyFlowCard extends HTMLElement {
   }
 
   private _fireEvent(type: string, detail: any = {}): void {
+    // Handle call-service events specially
     if (type === 'call-service' && this._hass) {
       this._hass.callService(detail.domain, detail.service, detail.service_data || {}, detail.target);
       return;
@@ -223,13 +233,13 @@ class CompactHomeEnergyFlowCard extends HTMLElement {
   }
 }
 
-// Register custom element
-const CARD_TAG = 'compact-home-energy-flow-card';
+// Register custom element (guard against double registration)
+const CARD_TAG = 'metered-home-energy-flow-card';
 if (!customElements.get(CARD_TAG)) {
-  customElements.define(CARD_TAG, CompactHomeEnergyFlowCard);
-  console.info('[CompactHomeEnergyFlowCard] defined custom element');
+  customElements.define(CARD_TAG, MeteredHomeEnergyFlowCard);
+  console.info('[MeteredHomeEnergyFlowCard] defined custom element');
 } else {
-  console.info('[CompactHomeEnergyFlowCard] custom element already defined');
+  console.info('[MeteredHomeEnergyFlowCard] custom element already defined');
 }
 
 // Register in card picker
@@ -240,9 +250,9 @@ declare global {
 }
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "compact-home-energy-flow-card",
-  name: "Compact Home Energy Flow Card",
-  description: "Compact bar visualization of home energy flows"
+  type: "metered-home-energy-flow-card",
+  name: "Metered Home Energy Flow Card",
+  description: "Flow diagram visualization of home energy flows with animated meters"
 });
 
 // Dispatch event to notify Home Assistant
