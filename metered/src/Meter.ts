@@ -1,4 +1,15 @@
-import type { NeedleState, ActionConfig } from './types.js';
+/** Needle animation state for meters */
+export interface NeedleState {
+  /** Target angle in degrees */
+  target: number;
+  /** Current angle in degrees */
+  current: number;
+  /** Ghost needle angle (lags behind current) */
+  ghost: number;
+}
+
+/** Action configuration (imported from Config types) */
+import type { ActionConfig } from '../../shared/src/types/Config.js';
 
 /**
  * Meter class: Fully self-contained gauge meter with rendering and animation
@@ -247,7 +258,7 @@ export class Meter {
     if (!this.fireEventCallback) return;
 
     // Default to more-info if no tap action configured
-    const config = this.tapAction || { action: 'more-info' };
+    const config = this.tapAction || { action: 'more-info' as const };
     const action = config.action || 'more-info';
 
     switch (action) {
@@ -259,15 +270,15 @@ export class Meter {
         break;
 
       case 'navigate':
-        if (config.navigation_path) {
-          history.pushState(null, '', config.navigation_path);
-          this.fireEventCallback('location-changed', { replace: config.navigation_replace || false });
+        if (config.path) {
+          history.pushState(null, '', config.path);
+          this.fireEventCallback('location-changed', { replace: false });
         }
         break;
 
       case 'url':
-        if (config.url_path) {
-          window.open(config.url_path);
+        if (config.path) {
+          window.open(config.path);
         }
         break;
 
@@ -281,26 +292,16 @@ export class Meter {
         }
         break;
 
-      case 'perform-action':
-        if (config.perform_action) {
-          const [domain, service] = config.perform_action.split('.');
+      case 'call-service':
+        if (config.service) {
+          const [domain, service] = config.service.split('.');
           this.fireEventCallback('call-service', {
             domain,
             service,
-            service_data: config.data || {},
+            service_data: config.service_data || {},
             target: config.target
           });
         }
-        break;
-
-      case 'assist':
-        this.fireEventCallback('show-dialog', {
-          dialogTag: 'ha-voice-command-dialog',
-          dialogParams: {
-            pipeline_id: config.pipeline_id || 'last_used',
-            start_listening: config.start_listening
-          }
-        });
         break;
 
       case 'none':

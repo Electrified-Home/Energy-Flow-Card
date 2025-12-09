@@ -5,7 +5,7 @@
  * based on sensor readings.
  */
 
-import type { SensorValues, EnergyFlows } from './types';
+import type { SensorValues, EnergyFlows } from './types/EnergyFlow';
 
 /**
  * Calculate energy flows between components based on sensor readings.

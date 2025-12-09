@@ -229,7 +229,7 @@
     </div>
   </div>
 
-  <script src="energy-flow-card.js"></script>
+  <script src="./dist/energy-flow-card.js?v=sim"></script>
   <script>
     // Mock ha-svg-icon web component (inner component with actual SVG)
     class MockHaSvgIcon extends HTMLElement {
@@ -332,14 +332,24 @@
     // Create card instance
     const card = document.createElement('energy-flow-card');
     card.setConfig({
-      view_mode: 'default',
-      grid_entity: 'sensor.grid',
-      load_entity: 'sensor.load',
-      production_entity: 'sensor.production',
-      battery_entity: 'sensor.battery',
-      battery_soc_entity: 'sensor.battery_soc',
-      invert_battery_data: false,
-      invert_battery_view: false
+      mode: 'default',
+      load: {
+        entity: 'sensor.load'
+      },
+      grid: {
+        entity: 'sensor.grid'
+      },
+      production: {
+        entity: 'sensor.production'
+      },
+      battery: {
+        entity: 'sensor.battery',
+        soc_entity: 'sensor.battery_soc',
+        invert: {
+          data: false,
+          view: false
+        }
+      }
     });
     card.hass = hass;
     cardContainer.appendChild(card);
@@ -363,14 +373,24 @@
 
       // Update config with invert options
       card.setConfig({
-        view_mode: viewMode,
-        grid_entity: 'sensor.grid',
-        load_entity: 'sensor.load',
-        production_entity: 'sensor.production',
-        battery_entity: 'sensor.battery',
-        battery_soc_entity: 'sensor.battery_soc',
-        invert_battery_data: invertData,
-        invert_battery_view: invertView
+        mode: viewMode,
+        load: {
+          entity: 'sensor.load'
+        },
+        grid: {
+          entity: 'sensor.grid'
+        },
+        production: {
+          entity: 'sensor.production'
+        },
+        battery: {
+          entity: 'sensor.battery',
+          soc_entity: 'sensor.battery_soc',
+          invert: {
+            data: invertData,
+            view: invertView
+          }
+        }
       });
       
       card.hass = { ...hass };
