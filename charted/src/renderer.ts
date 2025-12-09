@@ -3,14 +3,16 @@ import { LineChart } from 'echarts/charts';
 import {
   GridComponent,
   LegendComponent,
+  MarkPointComponent,
   TooltipComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import type { ChartedCardConfig, StatisticValue } from './types';
 import type { HomeAssistant } from '../../shared/src/types/HASS';
+import type { MarkPointComponentOption } from 'echarts/components';
 
 // Register required ECharts components
-echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([LineChart, GridComponent, LegendComponent, MarkPointComponent, TooltipComponent, CanvasRenderer]);
 
 interface ProcessedData {
   positive: [number, number][];
@@ -21,12 +23,15 @@ export class ChartedRenderer {
   private chart: echarts.ECharts;
   private hass: HomeAssistant;
   private config: ChartedCardConfig;
+  private container: HTMLElement;
   private resizeObserver: ResizeObserver;
 
   constructor(container: HTMLElement, hass: HomeAssistant, config: ChartedCardConfig) {
     this.hass = hass;
     this.config = config;
+    this.container = container;
     this.chart = echarts.init(container);
+    this.chart.on('click', this._handleChartClick);
     
     // Watch for container size changes and resize chart
     this.resizeObserver = new ResizeObserver(() => {
@@ -135,6 +140,14 @@ export class ChartedRenderer {
 
   private _renderChart(data: Record<string, StatisticValue[]>) {
     const datasets: any[] = [];
+    const icons: Record<string, string> = {
+      Solar: '☀️',
+      Import: '🔌',
+      Export: '🔌',
+      Discharge: '🔋',
+      Charge: '🔋',
+      Load: '⚙️',
+    };
     
     // Production stack: Solar + Grid Import + Battery Charging (all positive)
     // Storage stack: Battery Discharging + Grid Export (all negative)
@@ -157,6 +170,7 @@ export class ChartedRenderer {
       color: string,
       isPositive: boolean,
       gradientDir: 'down' | 'up',
+      markPoint?: MarkPointComponentOption,
     ) => {
       const valueMap = new Map<number, number>();
       (stats || []).forEach((s) => {
@@ -168,6 +182,8 @@ export class ChartedRenderer {
         const val = isPositive ? Math.max(0, v) : Math.min(0, v);
         return [t, val];
       });
+      const seriesPoints = stats || [];
+      const latest = seriesPoints.length > 0 ? seriesPoints[seriesPoints.length - 1] : null;
       const gradient = gradientDir === 'down'
         ? { x: 0, y: 0, x2: 0, y2: 1 }
         : { x: 0, y: 1, x2: 0, y2: 0 };
@@ -191,20 +207,131 @@ export class ChartedRenderer {
         lineStyle: { width: 0 },
         data: dataPoints,
         color,
+        markPoint,
       };
     };
 
+    // Helpers to pick latest aligned values
+    const getLatestValue = (stats: StatisticValue[] | undefined, ts: number) => {
+      if (!stats || stats.length === 0) return 0;
+      const found = stats.find((s) => s.start === ts);
+      if (found) return found.mean ?? 0;
+      const last = stats[stats.length - 1];
+      return last.mean ?? 0;
+    };
+
+    const lastTs = timestamps[timestamps.length - 1];
+    const solarVal = getLatestValue(data.solar, lastTs);
+    const gridVal = getLatestValue(data.grid, lastTs);
+    const batteryVal = getLatestValue(data.battery, lastTs);
+    const loadVal = getLatestValue(data.load, lastTs);
+
+    const importVal = Math.max(0, gridVal);
+    const exportVal = Math.min(0, gridVal);
+    const dischargeVal = Math.max(0, batteryVal);
+    const chargeVal = Math.min(0, batteryVal);
+
+    // Stacked positions (grid always outermost; battery adjacent to zero on negatives)
+    const solarStackY = solarVal;
+    const dischargeStackY = solarVal + dischargeVal;
+    const importStackY = solarVal + dischargeVal + importVal;
+    const chargeStackY = chargeVal;
+    const exportStackY = chargeVal + exportVal;
+
+    // Build markPoints: icon + value only
+    const makeMarkPoint = (
+      y: number,
+      value: number,
+      iconKey: string,
+      formatSigned = false,
+      entityId?: string,
+      zIndex = 0,
+    ): MarkPointComponentOption => ({
+      symbol: 'circle',
+      symbolSize: 12,
+      silent: false,
+      z: zIndex,
+      itemStyle: { color: 'rgba(0,0,0,0)', borderColor: 'rgba(0,0,0,0)' },
+      label: {
+        show: true,
+        formatter: () => {
+          if (formatSigned) {
+            const shown = -value;
+            const str = shown >= 0 ? `+${shown.toFixed(1)}` : shown.toFixed(1);
+            return `${icons[iconKey] ?? '●'} ${str} W`;
+          }
+          return `${icons[iconKey] ?? '●'} ${value.toFixed(1)} W`;
+        },
+        color: '#ffffff',
+        backgroundColor: 'rgba(0, 0, 0, 0.55)',
+        padding: [6, 8],
+        borderRadius: 6,
+        fontSize: 16,
+        position: 'right',
+        distance: 1,
+        align: 'left',
+      },
+      data: [
+        {
+          name: iconKey,
+          coord: [lastTs, y],
+          value,
+          entityId,
+        } as any,
+      ],
+    });
+
+    // Build series with markPoints aligned to stacked positions
     // Solar (production)
-    datasets.push(makeSeries(data.solar, 'Solar', 'production', '#4caf50', true, 'down'));
+    datasets.push(makeSeries(
+      data.solar,
+      'Solar',
+      'production',
+      '#4caf50',
+      true,
+      'down',
+      makeMarkPoint(solarStackY, solarVal, 'Solar', false, this.config.entities.solar, 30),
+    ));
 
-    // Grid Import (production) and Grid Export (storage)
-    datasets.push(makeSeries(data.grid, 'Import', 'production', '#f44336', true, 'down'));
-    datasets.push(makeSeries(data.grid, 'Export', 'storage', '#ffeb3b', false, 'up'));
+    // Battery Discharge (production, near zero), then Grid Import outermost
+    datasets.push(makeSeries(
+      data.battery,
+      'Discharge',
+      'production',
+      '#2196f3',
+      true,
+      'down',
+      batteryVal >= 0 ? makeMarkPoint(dischargeStackY, batteryVal, 'Discharge', true, this.config.entities.battery, 20) : undefined,
+    ));
+    datasets.push(makeSeries(
+      data.grid,
+      'Import',
+      'production',
+      '#f44336',
+      true,
+      'down',
+      gridVal >= 0 ? makeMarkPoint(importStackY, gridVal, 'Import', false, this.config.entities.grid, 10) : undefined,
+    ));
 
-    // Battery: in HA data, discharging is positive (supplying), charging is negative (consuming).
-    // So put Discharge on the production (positive) stack, Charge on the storage/export (negative) stack.
-    datasets.push(makeSeries(data.battery, 'Discharge', 'production', '#2196f3', true, 'down'));
-    datasets.push(makeSeries(data.battery, 'Charge', 'storage', '#00bcd4', false, 'up'));
+    // Battery Charge (storage, touching zero), then Grid Export outermost
+    datasets.push(makeSeries(
+      data.battery,
+      'Charge',
+      'storage',
+      '#00bcd4',
+      false,
+      'up',
+      batteryVal < 0 ? makeMarkPoint(chargeStackY, batteryVal, 'Charge', true, this.config.entities.battery, 20) : undefined,
+    ));
+    datasets.push(makeSeries(
+      data.grid,
+      'Export',
+      'storage',
+      '#ffeb3b',
+      false,
+      'up',
+      gridVal < 0 ? makeMarkPoint(exportStackY, gridVal, 'Export', false, this.config.entities.grid, 10) : undefined,
+    ));
 
     // Add load line (not stacked)
     const loadStats = data.load;
@@ -221,19 +348,12 @@ export class ChartedRenderer {
           },
           data: lineData,
           color: '#ffffff',
+          markPoint: makeMarkPoint(loadVal, loadVal, 'Load', false, this.config.entities.load, 40),
         });
     }
 
     const option = {
-      legend: {
-        data: ['Solar', 'Import', 'Export', 'Discharge', 'Charge', 'Load'],
-        orient: 'vertical',
-        right: 10,
-        top: 'middle',
-        itemWidth: 14,
-        itemHeight: 10,
-        textStyle: { color: '#ffffff', fontSize: 12 },
-      },
+      legend: { show: false },
       grid: {
         left: 50,
         right: 120,
@@ -297,6 +417,22 @@ export class ChartedRenderer {
     };
 
     this.chart.setOption(option);
+  }
+
+  private _handleChartClick = (params: any) => {
+    if (params.componentType !== 'markPoint') return;
+    const entityId = params.data?.entityId as string | undefined;
+    if (!entityId) return;
+    this._openMoreInfo(entityId);
+  };
+
+  private _openMoreInfo(entityId: string) {
+    const event = new CustomEvent('hass-more-info', {
+      detail: { entityId },
+      bubbles: true,
+      composed: true,
+    });
+    this.container.dispatchEvent(event);
   }
 
   private _createFloatingLabels(data: Record<string, StatisticValue[]>, sources: any[]) {
@@ -408,6 +544,7 @@ export class ChartedRenderer {
   }
 
   dispose() {
+    this.chart.off('click', this._handleChartClick);
     this.resizeObserver.disconnect();
     this.chart.dispose();
   }
