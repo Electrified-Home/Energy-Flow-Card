@@ -2,6 +2,7 @@ import * as echarts from 'echarts/core';
 import { LineChart } from 'echarts/charts';
 import {
   GridComponent,
+  LegendComponent,
   TooltipComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
@@ -9,7 +10,7 @@ import type { ChartedCardConfig, StatisticValue } from './types';
 import type { HomeAssistant } from '../../shared/src/types/HASS';
 
 // Register required ECharts components
-echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
 interface ProcessedData {
   positive: [number, number][];
@@ -182,8 +183,8 @@ export class ChartedRenderer {
             type: 'linear',
             ...gradient,
             colorStops: [
-              { offset: 0, color: this._hexToRgba(color, 0.75) },
-              { offset: 1, color: this._hexToRgba(color, 0.25) },
+              { offset: 0, color: this._hexToRgba(color, 0.98) },
+              { offset: 1, color: this._hexToRgba(color, 0.8) },
             ],
           },
         },
@@ -197,35 +198,44 @@ export class ChartedRenderer {
     datasets.push(makeSeries(data.solar, 'Solar', 'production', '#4caf50', true, 'down'));
 
     // Grid Import (production) and Grid Export (storage)
-    datasets.push(makeSeries(data.grid, 'Grid Import', 'production', '#f44336', true, 'down'));
-    datasets.push(makeSeries(data.grid, 'Grid Export', 'storage', '#ffeb3b', false, 'up'));
+    datasets.push(makeSeries(data.grid, 'Import', 'production', '#f44336', true, 'down'));
+    datasets.push(makeSeries(data.grid, 'Export', 'storage', '#ffeb3b', false, 'up'));
 
     // Battery Charging (production) and Battery Discharging (storage)
-    datasets.push(makeSeries(data.battery, 'Battery Charging', 'production', '#2196f3', true, 'down'));
-    datasets.push(makeSeries(data.battery, 'Battery Discharging', 'storage', '#2196f3', false, 'up'));
+    datasets.push(makeSeries(data.battery, 'Charge', 'production', '#00bcd4', true, 'down'));
+    datasets.push(makeSeries(data.battery, 'Discharge', 'storage', '#2196f3', false, 'up'));
 
     // Add load line (not stacked)
     const loadStats = data.load;
     if (loadStats && loadStats.length > 0) {
       const lineData = loadStats.map(s => [s.start, s.mean]);
-      datasets.push({
-        name: 'Load',
-        type: 'line',
-        smooth: true,
-        showSymbol: false,
-        lineStyle: {
-          width: 3,
+        datasets.push({
+          name: 'Load',
+          type: 'line',
+          smooth: true,
+          showSymbol: false,
+          lineStyle: {
+            width: 4,
+            color: '#ffffff',
+          },
+          data: lineData,
           color: '#ffffff',
-        },
-        data: lineData,
-        color: '#ffffff',
-      });
+        });
     }
 
     const option = {
+      legend: {
+        data: ['Solar', 'Import', 'Export', 'Charge', 'Discharge', 'Load'],
+        orient: 'vertical',
+        right: 10,
+        top: 'middle',
+        itemWidth: 14,
+        itemHeight: 10,
+        textStyle: { color: '#ffffff', fontSize: 12 },
+      },
       grid: {
         left: 50,
-        right: 20,
+        right: 120,
         top: 40,
         bottom: 50,
       },
@@ -234,7 +244,12 @@ export class ChartedRenderer {
         axisLabel: {
           formatter: (value: number) => {
             const date = new Date(value);
-            return `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+            let hours = date.getHours();
+            const minutes = date.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12; // the hour '0' should be '12'
+            return `${hours}:${String(minutes).padStart(2, '0')} ${ampm}`;
           },
         },
         splitLine: {
@@ -248,10 +263,20 @@ export class ChartedRenderer {
         max: 'dataMax',
         axisLabel: {
           formatter: (value: number) => Math.round(value).toString(),
+          color: 'rgba(255, 255, 255, 0.9)',
+          fontSize: 13,
+        },
+        axisLine: {
+          show: true,
+          lineStyle: { color: 'rgba(255, 255, 255, 0.6)', width: 1 },
+        },
+        axisTick: {
+          show: true,
+          lineStyle: { color: 'rgba(255, 255, 255, 0.6)' },
         },
         splitLine: {
           lineStyle: {
-            color: 'rgba(255, 255, 255, 0.1)',
+            color: 'rgba(255, 255, 255, 0.2)',
             width: 1,
           },
         },
