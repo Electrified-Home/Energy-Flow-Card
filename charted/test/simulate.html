@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Charted Card Test</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #58a6ff;
+    }
+    energy-flow-charted-card {
+      display: block;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Energy Flow Charted Card - Test</h1>
+    <energy-flow-charted-card id="card"></energy-flow-charted-card>
+  </div>
+
+  <script type="module" src="../../charted/dist/home-energy-flow-graph-card.js"></script>
+  <script type="module">
+    // Mock HASS object
+    const mockHass = {
+      callApi: async (method, url) => {
+        console.log('Mock API call:', method, url);
+        
+        // Generate realistic solar day data
+        const now = Date.now();
+        const generateSolarData = () => {
+          const data = [];
+          for (let i = 720; i >= 0; i -= 5) { // 12 hours in 5-min intervals
+            const timestamp = new Date(now - i * 60 * 1000);
+            const hour = timestamp.getHours();
+            const minute = timestamp.getMinutes();
+            const timeOfDay = hour + minute / 60;
+            
+            // Solar: bell curve peaking at noon (0W at night, ~3000W at peak)
+            let solar = 0;
+            if (timeOfDay >= 6 && timeOfDay <= 18) {
+              const solarAngle = ((timeOfDay - 6) / 12) * Math.PI;
+              solar = Math.sin(solarAngle) * 3000 + Math.random() * 200 - 100;
+            }
+            solar = Math.max(0, solar);
+            
+            // Load: baseline ~500W, higher during day ~1500W
+            const load = 500 + (timeOfDay >= 8 && timeOfDay <= 22 ? 1000 : 0) + Math.random() * 200 - 100;
+            
+            // HA Convention:
+            // Battery: positive = charging (consuming), negative = discharging (providing)
+            // Grid: positive = importing (consuming), negative = exporting (providing)
+            
+            let batteryPower = 0;  // Internal calculation (positive = charging)
+            let gridPower = 0;     // Internal calculation
+            
+            // Determine if we have excess solar or deficit
+            const netProduction = solar - load;
+            
+            if (netProduction > 500) {
+              // Excess: charge battery (up to 2kW), rest exports to grid
+              batteryPower = Math.min(netProduction * 0.7, 2000);  // positive = charging
+              gridPower = netProduction - batteryPower;            // positive = export
+            } else if (netProduction < -500) {
+              // Deficit: discharge battery to help (up to 2kW), rest imports from grid
+              batteryPower = Math.max(netProduction * 0.6, -2000); // negative = discharging
+              gridPower = netProduction - batteryPower;            // negative = import
+            } else {
+              // Nearly balanced
+              batteryPower = 0;
+              gridPower = netProduction;
+            }
+            
+            // Convert to HA convention: grid negative = export, positive = import
+            const battery = batteryPower;
+            const grid = -gridPower;  // Invert: excess (positive gridPower) becomes negative export
+            
+            data.push({
+              solar: { last_changed: timestamp.toISOString(), state: solar.toFixed(2) },
+              grid: { last_changed: timestamp.toISOString(), state: grid.toFixed(2) },
+              battery: { last_changed: timestamp.toISOString(), state: battery.toFixed(2) },
+              load: { last_changed: timestamp.toISOString(), state: load.toFixed(2) },
+            });
+          }
+          return data;
+        };
+
+        const dayData = generateSolarData();
+        
+        // Return mock data for each entity
+        return [
+          dayData.map(d => d.solar),   // solar - always positive
+          dayData.map(d => d.grid),    // grid - positive = import, negative = export
+          dayData.map(d => d.battery), // battery - positive = charging, negative = discharging
+          dayData.map(d => d.load),    // load - always positive
+        ];
+      },
+    };
+
+    // Wait for component to load then configure
+    customElements.whenDefined('energy-flow-charted-card').then(() => {
+      const card = document.getElementById('card');
+      card.hass = mockHass;
+      card.setConfig({
+        type: 'custom:energy-flow-charted-card',
+        graph_span: '12h',
+        graph_interval: '5min',
+        entities: {
+          solar: 'sensor.solar_power',
+          grid: 'sensor.grid_power',
+          battery: 'sensor.battery_power',
+          load: 'sensor.load_power',
+        },
+      });
+      console.log('Card configured');
+    });
+  </script>
+</body>
+</html>

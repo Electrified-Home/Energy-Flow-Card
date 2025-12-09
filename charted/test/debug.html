@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Debug Charted Card</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #0d1117;
+      color: #c9d1d9;
+      margin: 20px;
+    }
+    #log {
+      background: #161b22;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      margin: 2px 0;
+      padding: 2px;
+    }
+    .error { color: #ff6b6b; }
+    .success { color: #51cf66; }
+    .info { color: #339af0; }
+    energy-flow-charted-card {
+      display: block;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Debug Log</h1>
+  <div id="log"></div>
+  
+  <h1>Card Element</h1>
+  <energy-flow-charted-card id="card"></energy-flow-charted-card>
+
+  <script type="module">
+    const log = (msg, type = 'info') => {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      document.getElementById('log').appendChild(entry);
+      console.log(msg);
+    };
+
+    log('Starting debug...', 'info');
+
+    // Try to load the module
+    try {
+      log('Loading module from: ../../charted/dist/home-energy-flow-graph-card.js', 'info');
+      const module = await import('../../charted/dist/home-energy-flow-graph-card.js');
+      log('Module loaded successfully!', 'success');
+      log(`Module exports: ${Object.keys(module).join(', ')}`, 'info');
+    } catch (error) {
+      log(`Failed to load module: ${error.message}`, 'error');
+      log(`Error stack: ${error.stack}`, 'error');
+    }
+
+    // Wait for custom element
+    log('Waiting for custom element definition...', 'info');
+    customElements.whenDefined('energy-flow-charted-card').then(() => {
+      log('Custom element defined!', 'success');
+      
+      // Mock HASS
+      const mockHass = {
+        callApi: async (method, url) => {
+          log(`Mock API called: ${method} ${url}`, 'info');
+          
+          const now = Date.now();
+          const generateData = (baseValue, variance) => {
+            const data = [];
+            for (let i = 720; i >= 0; i -= 5) {
+              const timestamp = new Date(now - i * 60 * 1000);
+              const value = baseValue + Math.random() * variance - variance / 2;
+              data.push({
+                last_changed: timestamp.toISOString(),
+                state: Math.max(0, value).toFixed(2),
+              });
+            }
+            return data;
+          };
+
+          return [
+            generateData(2000, 1000),
+            generateData(1500, 800),
+            generateData(500, 400),
+            generateData(3000, 1200),
+          ];
+        },
+      };
+
+      const card = document.getElementById('card');
+      log('Setting hass property...', 'info');
+      card.hass = mockHass;
+      
+      log('Setting config...', 'info');
+      try {
+        card.setConfig({
+          type: 'custom:energy-flow-charted-card',
+          graph_span: '12h',
+          entities: {
+            solar: 'sensor.solar_power',
+            grid: 'sensor.grid_power',
+            battery: 'sensor.battery_power',
+            load: 'sensor.load_power',
+          },
+        });
+        log('Config set successfully!', 'success');
+      } catch (error) {
+        log(`Failed to set config: ${error.message}`, 'error');
+      }
+    }).catch(error => {
+      log(`Custom element never defined: ${error.message}`, 'error');
+    });
+  </script>
+</body>
+</html>

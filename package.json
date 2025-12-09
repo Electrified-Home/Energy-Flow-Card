@@ -4,9 +4,10 @@
   "description": "Home Assistant Energy Flow Card",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "pnpm typecheck && pnpm lint && pnpm build:compact && pnpm build:metered",
+    "build": "pnpm typecheck && pnpm lint && pnpm build:compact && pnpm build:metered && pnpm build:charted",
     "build:compact": "vite build --config compact/vite.config.ts",
     "build:metered": "vite build --config metered/vite.config.ts",
+    "build:charted": "vite build --config charted/vite.config.ts",
     "build:debug": "pnpm typecheck && pnpm lint && vite build -- --debug-build",
     "dev": "vite",
     "preview": "vite preview",
@@ -40,5 +41,9 @@
     "flow"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "echarts": "^6.0.0",
+    "lit": "^3.3.1"
+  }
 }

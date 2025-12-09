@@ -42,13 +42,16 @@
   "include": [
     "compact/src/**/*.ts",
     "metered/src/**/*.ts",
+    "charted/src/**/*.ts",
     "shared/src/**/*.ts",
     "compact/test/**/*.ts",
     "metered/test/**/*.ts",
+    "charted/test/**/*.ts",
     "shared/test/**/*.ts",
     "vite.config.ts",
     "compact/vite.config.ts",
-    "metered/vite.config.ts"
+    "metered/vite.config.ts",
+    "charted/vite.config.ts"
   ],
   "exclude": [
     "node_modules"
