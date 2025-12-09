@@ -201,9 +201,10 @@ export class ChartedRenderer {
     datasets.push(makeSeries(data.grid, 'Import', 'production', '#f44336', true, 'down'));
     datasets.push(makeSeries(data.grid, 'Export', 'storage', '#ffeb3b', false, 'up'));
 
-    // Battery Charging (production) and Battery Discharging (storage)
-    datasets.push(makeSeries(data.battery, 'Charge', 'production', '#00bcd4', true, 'down'));
-    datasets.push(makeSeries(data.battery, 'Discharge', 'storage', '#2196f3', false, 'up'));
+    // Battery: in HA data, discharging is positive (supplying), charging is negative (consuming).
+    // So put Discharge on the production (positive) stack, Charge on the storage/export (negative) stack.
+    datasets.push(makeSeries(data.battery, 'Discharge', 'production', '#2196f3', true, 'down'));
+    datasets.push(makeSeries(data.battery, 'Charge', 'storage', '#00bcd4', false, 'up'));
 
     // Add load line (not stacked)
     const loadStats = data.load;
@@ -225,7 +226,7 @@ export class ChartedRenderer {
 
     const option = {
       legend: {
-        data: ['Solar', 'Import', 'Export', 'Charge', 'Discharge', 'Load'],
+        data: ['Solar', 'Import', 'Export', 'Discharge', 'Charge', 'Load'],
         orient: 'vertical',
         right: 10,
         top: 'middle',
