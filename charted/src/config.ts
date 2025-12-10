@@ -34,5 +34,6 @@ export function normalizeConfig(config: any): ChartedCardConfig {
       battery: config.entities?.battery || '',
       load: config.entities?.load || '',
     },
+    time_bands: Array.isArray(config.time_bands) ? config.time_bands : [],
   };
 }

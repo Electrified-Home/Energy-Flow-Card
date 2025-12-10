@@ -4,6 +4,7 @@ import {
   GridComponent,
   LegendComponent,
   MarkPointComponent,
+  MarkAreaComponent,
   TooltipComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
@@ -12,7 +13,7 @@ import type { HomeAssistant } from '../../shared/src/types/HASS';
 import type { MarkPointComponentOption } from 'echarts/components';
 
 // Register required ECharts components
-echarts.use([LineChart, GridComponent, LegendComponent, MarkPointComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([LineChart, GridComponent, LegendComponent, MarkPointComponent, MarkAreaComponent, TooltipComponent, CanvasRenderer]);
 
 interface ProcessedData {
   positive: [number, number][];
@@ -221,10 +222,17 @@ export class ChartedRenderer {
     };
 
     const lastTs = timestamps[timestamps.length - 1];
-    const solarVal = getLatestValue(data.solar, lastTs);
-    const gridVal = getLatestValue(data.grid, lastTs);
-    const batteryVal = getLatestValue(data.battery, lastTs);
-    const loadVal = getLatestValue(data.load, lastTs);
+    const firstTs = timestamps[0];
+    // Latest values from stats, then override with live state if available
+    const solarStat = getLatestValue(data.solar, lastTs);
+    const gridStat = getLatestValue(data.grid, lastTs);
+    const batteryStat = getLatestValue(data.battery, lastTs);
+    const loadStat = getLatestValue(data.load, lastTs);
+
+    const solarVal = this._getLiveValue(this.config.entities.solar, solarStat);
+    const gridVal = this._getLiveValue(this.config.entities.grid, gridStat);
+    const batteryVal = this._getLiveValue(this.config.entities.battery, batteryStat);
+    const loadVal = this._getLiveValue(this.config.entities.load, loadStat);
 
     const importVal = Math.max(0, gridVal);
     const exportVal = Math.min(0, gridVal);
@@ -282,6 +290,97 @@ export class ChartedRenderer {
     });
 
     // Build series with markPoints aligned to stacked positions
+    const showChip = (val: number) => Math.abs(val) > 1e-3;
+
+    // Compute chip Y positions with collision avoidance (load is anchor, always visible)
+    const chipPositions: Record<string, number> = {};
+    
+    // Collect all visible chips
+    const visibleChips: { name: string; baseY: number; value: number }[] = [];
+    visibleChips.push({ name: 'Load', baseY: loadVal, value: loadVal }); // always visible
+    if (showChip(solarVal)) visibleChips.push({ name: 'Solar', baseY: solarStackY, value: solarVal });
+    if (batteryVal >= 0 && showChip(batteryVal)) visibleChips.push({ name: 'Discharge', baseY: dischargeStackY, value: batteryVal });
+    if (gridVal >= 0 && showChip(gridVal)) visibleChips.push({ name: 'Import', baseY: importStackY, value: gridVal });
+    if (batteryVal < 0 && showChip(batteryVal)) visibleChips.push({ name: 'Charge', baseY: chargeStackY, value: batteryVal });
+    if (gridVal < 0 && showChip(gridVal)) visibleChips.push({ name: 'Export', baseY: exportStackY, value: gridVal });
+    
+    // Pixel-based collision resolution
+    const convertToPixel = (val: number): number | null => {
+      try {
+        const res = this.chart.convertToPixel({ yAxisIndex: 0 }, val);
+        return typeof res === 'number' ? res : null;
+      } catch {
+        return null;
+      }
+    };
+    
+    const convertToValue = (px: number): number | null => {
+      try {
+        const res = this.chart.convertFromPixel({ yAxisIndex: 0 }, px);
+        return typeof res === 'number' ? res : null;
+      } catch {
+        return null;
+      }
+    };
+    
+    const loadPx = convertToPixel(loadVal);
+    if (loadPx !== null) {
+      const minGapPx = 32; // minimum pixel gap between chips
+      const chipsPx = visibleChips.map(c => ({
+        name: c.name,
+        px: convertToPixel(c.baseY) ?? 0,
+        baseY: c.baseY,
+      }));
+      
+      // Separate into above (smaller px = visually higher) and below load
+      const above = chipsPx.filter(c => c.name !== 'Load' && c.px < loadPx).sort((a, b) => a.px - b.px);
+      const below = chipsPx.filter(c => c.name !== 'Load' && c.px > loadPx).sort((a, b) => a.px - b.px);
+      
+      chipPositions['Load'] = loadVal;
+      
+      // Place chips above load (working upward from load)
+      let lastPx = loadPx;
+      for (const chip of above) {
+        const targetPx = chip.px;
+        const adjustedPx = (lastPx - targetPx < minGapPx) ? lastPx - minGapPx : targetPx;
+        const adjustedVal = convertToValue(adjustedPx);
+        chipPositions[chip.name] = adjustedVal !== null ? adjustedVal : chip.baseY;
+        lastPx = adjustedPx;
+      }
+      
+      // Place chips below load (working downward from load)
+      lastPx = loadPx;
+      for (const chip of below) {
+        const targetPx = chip.px;
+        const adjustedPx = (targetPx - lastPx < minGapPx) ? lastPx + minGapPx : targetPx;
+        const adjustedVal = convertToValue(adjustedPx);
+        chipPositions[chip.name] = adjustedVal !== null ? adjustedVal : chip.baseY;
+        lastPx = adjustedPx;
+      }
+    } else {
+      // Fallback: use base positions if pixel conversion fails
+      visibleChips.forEach(c => chipPositions[c.name] = c.baseY);
+    }
+
+    // Optional time-band shading behind all series
+    const bandAreas = this._buildTimeBandAreas(firstTs, lastTs, this.config.time_bands || []);
+    if (bandAreas.length > 0) {
+      datasets.push({
+        name: 'Time Bands',
+        type: 'line',
+        data: [],
+        silent: true,
+        symbol: 'none',
+        lineStyle: { opacity: 0 },
+        markArea: {
+          silent: true,
+          itemStyle: { opacity: 1 },
+          data: bandAreas,
+        },
+        z: -5,
+      });
+    }
+
     // Solar (production)
     datasets.push(makeSeries(
       data.solar,
@@ -290,7 +389,7 @@ export class ChartedRenderer {
       '#4caf50',
       true,
       'down',
-      makeMarkPoint(solarStackY, solarVal, 'Solar', false, this.config.entities.solar, 30),
+      showChip(solarVal) ? makeMarkPoint(chipPositions['Solar'] ?? solarStackY, solarVal, 'Solar', false, this.config.entities.solar, 30) : undefined,
     ));
 
     // Battery Discharge (production, near zero), then Grid Import outermost
@@ -301,7 +400,7 @@ export class ChartedRenderer {
       '#2196f3',
       true,
       'down',
-      batteryVal >= 0 ? makeMarkPoint(dischargeStackY, batteryVal, 'Discharge', true, this.config.entities.battery, 20) : undefined,
+      batteryVal >= 0 && showChip(batteryVal) ? makeMarkPoint(chipPositions['Discharge'] ?? dischargeStackY, batteryVal, 'Discharge', true, this.config.entities.battery, 20) : undefined,
     ));
     datasets.push(makeSeries(
       data.grid,
@@ -310,7 +409,7 @@ export class ChartedRenderer {
       '#f44336',
       true,
       'down',
-      gridVal >= 0 ? makeMarkPoint(importStackY, gridVal, 'Import', false, this.config.entities.grid, 10) : undefined,
+      gridVal >= 0 && showChip(gridVal) ? makeMarkPoint(chipPositions['Import'] ?? importStackY, gridVal, 'Import', false, this.config.entities.grid, 10) : undefined,
     ));
 
     // Battery Charge (storage, touching zero), then Grid Export outermost
@@ -321,7 +420,7 @@ export class ChartedRenderer {
       '#00bcd4',
       false,
       'up',
-      batteryVal < 0 ? makeMarkPoint(chargeStackY, batteryVal, 'Charge', true, this.config.entities.battery, 20) : undefined,
+      batteryVal < 0 && showChip(batteryVal) ? makeMarkPoint(chipPositions['Charge'] ?? chargeStackY, batteryVal, 'Charge', true, this.config.entities.battery, 20) : undefined,
     ));
     datasets.push(makeSeries(
       data.grid,
@@ -330,7 +429,7 @@ export class ChartedRenderer {
       '#ffeb3b',
       false,
       'up',
-      gridVal < 0 ? makeMarkPoint(exportStackY, gridVal, 'Export', false, this.config.entities.grid, 10) : undefined,
+      gridVal < 0 && showChip(gridVal) ? makeMarkPoint(chipPositions['Export'] ?? exportStackY, gridVal, 'Export', false, this.config.entities.grid, 10) : undefined,
     ));
 
     // Add load line (not stacked)
@@ -348,7 +447,7 @@ export class ChartedRenderer {
           },
           data: lineData,
           color: '#ffffff',
-          markPoint: makeMarkPoint(loadVal, loadVal, 'Load', false, this.config.entities.load, 40),
+          markPoint: makeMarkPoint(chipPositions['Load'] ?? loadVal, loadVal, 'Load', false, this.config.entities.load, 40),
         });
     }
 
@@ -433,6 +532,77 @@ export class ChartedRenderer {
       composed: true,
     });
     this.container.dispatchEvent(event);
+  }
+
+  private _getLiveValue(entityId: string | undefined, fallback: number): number {
+    if (!entityId) return fallback;
+    const stateObj: any = (this.hass as any)?.states?.[entityId];
+    const live = stateObj ? parseFloat(stateObj.state) : NaN;
+    return Number.isFinite(live) ? live : fallback;
+  }
+
+  private _buildTimeBandAreas(rangeStart: number, rangeEnd: number, bands: ChartedCardConfig['time_bands']): any[] {
+    if (!bands || bands.length === 0) return [];
+
+    const dayMs = 24 * 60 * 60 * 1000;
+    const areas: any[] = [];
+
+    const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
+
+    const startDay = new Date(rangeStart);
+    startDay.setHours(0, 0, 0, 0);
+    const firstDayStart = startDay.getTime();
+
+    for (let dayStart = firstDayStart; dayStart <= rangeEnd + dayMs; dayStart += dayMs) {
+      bands.forEach((band) => {
+        const startOffset = this._parseTimeToOffset(band.start);
+        const endOffset = this._parseTimeToOffset(band.end);
+
+        let bandStart = dayStart + startOffset;
+        let bandEnd = dayStart + endOffset;
+        if (endOffset <= startOffset) {
+          bandEnd += dayMs; // wraps past midnight
+        }
+
+        if (bandEnd < rangeStart || bandStart > rangeEnd) return;
+
+        bandStart = clamp(bandStart, rangeStart, rangeEnd);
+        bandEnd = clamp(bandEnd, rangeStart, rangeEnd);
+
+        areas.push([
+          {
+            xAxis: bandStart,
+            itemStyle: {
+              color: this._hexToRgba(band.color || '#ffeb3b', 0.16),
+            },
+            label: band.label != null && band.label !== ''
+              ? {
+                show: true,
+                formatter: band.label,
+                color: '#ffffff',
+                fontSize: 12,
+                backgroundColor: 'rgba(0,0,0,0.35)',
+                padding: [3, 6],
+                borderRadius: 4,
+              }
+              : { show: false },
+          },
+          {
+            xAxis: bandEnd,
+          },
+        ]);
+      });
+    }
+
+    return areas;
+  }
+
+  private _parseTimeToOffset(value: string): number {
+    if (!value) return 0;
+    const [hStr, mStr] = value.split(':');
+    const hours = parseInt(hStr, 10) || 0;
+    const minutes = parseInt(mStr, 10) || 0;
+    return (hours * 60 + minutes) * 60 * 1000;
   }
 
   private _createFloatingLabels(data: Record<string, StatisticValue[]>, sources: any[]) {
