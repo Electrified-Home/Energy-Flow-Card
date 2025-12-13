@@ -83,8 +83,8 @@
     </div>
   </div>
 
-  <script type="module" src="../../dist/compact-home-energy-flow-card.js"></script>
-  <script>
+  <script type="module" src="../dist/compact-home-energy-flow-card.js"></script>
+  <script type="module">
     // Mock Home Assistant interface
     const mockHass = {
       states: {
@@ -99,6 +99,9 @@
       }
     };
 
+    // Wait for custom element to be defined
+    await customElements.whenDefined('compact-home-energy-flow-card');
+    
     // Initialize card
     const card = document.getElementById('card');
     

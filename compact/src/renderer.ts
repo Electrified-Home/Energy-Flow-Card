@@ -43,6 +43,15 @@ export class CompactRenderer {
   private readonly gridColor = '#7a211b'; // Dark red (import)
   private readonly returnColor = '#7a6b1b'; // Dark yellow (export)
 
+  // Animation state
+  private animationFrameId: number | null = null;
+  private loadPosition = 0;
+  private batteryPosition = 0;
+  private loadSpeed = 0;
+  private batterySpeed = 0;
+  private batteryDirection: 'up' | 'down' | 'none' = 'none';
+  private lastAnimationTime = 0;
+
   constructor(
     container: HTMLElement,
     config: EnergyFlowCardConfig,
@@ -130,6 +139,46 @@ export class CompactRenderer {
             display: flex;
             position: relative;
           }
+          .bar-container {
+            --gradient-x: -100%;
+            --gradient-y: 0%;
+          }
+          .bar-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+              90deg,
+              rgba(255, 255, 255, 0) 0%,
+              rgba(255, 255, 255, 0) 30%,
+              rgba(255, 255, 255, 0.3) 50%,
+              rgba(255, 255, 255, 0) 70%,
+              rgba(255, 255, 255, 0) 100%
+            );
+            pointer-events: none;
+            z-index: 10;
+            will-change: transform, opacity;
+            transform: translateX(var(--gradient-x));
+            opacity: 1;
+            transition: opacity 0.5s ease-out;
+          }
+          .bar-container.no-flow::before {
+            opacity: 0;
+          }
+          #battery-row .bar-container::before {
+            background: linear-gradient(
+              180deg,
+              rgba(255, 255, 255, 0) 0%,
+              rgba(255, 255, 255, 0) 30%,
+              rgba(255, 255, 255, 0.3) 50%,
+              rgba(255, 255, 255, 0) 70%,
+              rgba(255, 255, 255, 0) 100%
+            );
+            transform: translateY(var(--gradient-y));
+          }
           .bar-segment {
             height: 100%;
             display: flex;
@@ -141,7 +190,6 @@ export class CompactRenderer {
             color: rgb(255, 255, 255);
             transition: width 0.5s ease-out;
             position: relative;
-            overflow: hidden;
             cursor: pointer;
           }
           .bar-segment:hover {
@@ -216,35 +264,6 @@ export class CompactRenderer {
           }
         </style>
         <div class="compact-view">
-          <!-- Load Row -->
-          <div class="compact-row">
-            <div class="bar-container">
-              <div id="grid-segment" class="bar-segment" style="background: ${this.gridColor}; width: 0%;">
-                <div class="bar-segment-content">
-                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback('grid', 'mdi:transmission-tower')}"></ha-icon>
-                  <span class="bar-segment-label"></span>
-                </div>
-              </div>
-              <div id="battery-segment" class="bar-segment" style="background: ${this.batteryColor}; width: 0%;">
-                <div class="bar-segment-content">
-                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback('battery', 'mdi:battery')}"></ha-icon>
-                  <span class="bar-segment-label"></span>
-                </div>
-              </div>
-              <div id="production-segment" class="bar-segment" style="background: ${this.productionColor}; width: 0%;">
-                <div class="bar-segment-content">
-                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback('production', 'mdi:solar-power')}"></ha-icon>
-                  <span class="bar-segment-label"></span>
-                </div>
-              </div>
-            </div>
-            <div class="row-value">
-              <ha-icon class="row-icon" icon="${this.getIconCallback('load', 'mdi:home-lightning-bolt')}"></ha-icon>
-              <div class="row-text">
-                <span id="load-value-text">0</span><span class="row-unit">W</span>
-              </div>
-            </div>
-          </div>
           ${this.viewMode === 'compact-battery' ? `
           <!-- Battery Row -->
           <div class="compact-row" id="battery-row">
@@ -283,6 +302,35 @@ export class CompactRenderer {
             </div>
           </div>
           ` : ''}
+          <!-- Load Row -->
+          <div class="compact-row">
+            <div class="bar-container">
+              <div id="grid-segment" class="bar-segment" style="background: ${this.gridColor}; width: 0%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback('grid', 'mdi:transmission-tower')}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+              <div id="battery-segment" class="bar-segment" style="background: ${this.batteryColor}; width: 0%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback('battery', 'mdi:battery')}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+              <div id="production-segment" class="bar-segment" style="background: ${this.productionColor}; width: 0%;">
+                <div class="bar-segment-content">
+                  <ha-icon class="bar-segment-icon" icon="${this.getIconCallback('production', 'mdi:solar-power')}"></ha-icon>
+                  <span class="bar-segment-label"></span>
+                </div>
+              </div>
+            </div>
+            <div class="row-value">
+              <ha-icon class="row-icon" icon="${this.getIconCallback('load', 'mdi:home-lightning-bolt')}"></ha-icon>
+              <div class="row-text">
+                <span id="load-value-text">0</span><span class="row-unit">W</span>
+              </div>
+            </div>
+          </div>
         </div>
       </ha-card>
     `;
@@ -464,6 +512,82 @@ export class CompactRenderer {
   }
 
   /**
+   * Calculate animation duration based on power flow
+   * Higher power = faster animation (shorter duration)
+   */
+  private getAnimationSpeed(watts: number): number {
+    if (watts <= 0) return 0;
+    
+    // Linear relationship: speed is proportional to watts
+    // Speed in % per second
+    const referenceWatts = 100;
+    const referenceSpeed = 2.5; // % per second at 100W
+    
+    return (watts / referenceWatts) * referenceSpeed;
+  }
+
+  /**
+   * Start the animation loop
+   */
+  private startAnimation(): void {
+    if (this.animationFrameId !== null) return;
+    
+    this.lastAnimationTime = performance.now();
+    
+    const animate = (currentTime: number) => {
+      const deltaTime = (currentTime - this.lastAnimationTime) / 1000; // Convert to seconds
+      this.lastAnimationTime = currentTime;
+      
+      // Update load bar position (horizontal)
+      if (this.loadSpeed > 0) {
+        this.loadPosition += this.loadSpeed * deltaTime;
+        if (this.loadPosition > 100) this.loadPosition = -100;
+        
+        const loadBarContainer = this.container.querySelector('.compact-row:not(#battery-row) .bar-container') as HTMLElement;
+        if (loadBarContainer) {
+          const gradient = loadBarContainer.querySelector('::before');
+          if (gradient) {
+            (gradient as HTMLElement).style.transform = `translateX(${this.loadPosition}%)`;
+          } else {
+            // Fallback: set CSS variable
+            loadBarContainer.style.setProperty('--gradient-x', `${this.loadPosition}%`);
+          }
+        }
+      }
+      
+      // Update battery bar position (vertical)
+      if (this.batterySpeed > 0 && this.batteryDirection !== 'none') {
+        if (this.batteryDirection === 'up') {
+          this.batteryPosition -= this.batterySpeed * deltaTime;
+          if (this.batteryPosition < -100) this.batteryPosition = 100;
+        } else {
+          this.batteryPosition += this.batterySpeed * deltaTime;
+          if (this.batteryPosition > 100) this.batteryPosition = -100;
+        }
+        
+        const batteryBarContainer = this.container.querySelector('#battery-row .bar-container') as HTMLElement;
+        if (batteryBarContainer) {
+          batteryBarContainer.style.setProperty('--gradient-y', `${this.batteryPosition}%`);
+        }
+      }
+      
+      this.animationFrameId = requestAnimationFrame(animate);
+    };
+    
+    this.animationFrameId = requestAnimationFrame(animate);
+  }
+
+  /**
+   * Stop the animation loop
+   */
+  private stopAnimation(): void {
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+  }
+
+  /**
    * Update the load bar segments
    */
   private updateLoadBar(
@@ -482,7 +606,20 @@ export class CompactRenderer {
     const batterySegment = this.container.querySelector('#battery-segment');
     const gridSegment = this.container.querySelector('#grid-segment');
     const loadValueText = this.container.querySelector('#load-value-text');
-    const barContainer = this.container.querySelector('.bar-container');
+    const barContainer = this.container.querySelector('.bar-container') as HTMLElement;
+
+    // Update animation speed for load bar
+    this.loadSpeed = this.getAnimationSpeed(load);
+    if (barContainer) {
+      if (this.loadSpeed > 0) {
+        barContainer.classList.remove('no-flow');
+        if (this.animationFrameId === null) {
+          this.startAnimation();
+        }
+      } else {
+        barContainer.classList.add('no-flow');
+      }
+    }
 
     if (productionSegment) {
       (productionSegment as HTMLElement).style.width = `${visualProductionPercent}%`;
@@ -540,13 +677,23 @@ export class CompactRenderer {
     const batterySocTextLeft = this.container.querySelector('#battery-soc-text-left');
     const batterySocTextRight = this.container.querySelector('#battery-soc-text-right');
     const batteryBarContainers = this.container.querySelectorAll('.bar-container');
-    const batteryBarContainer = batteryBarContainers[1] as HTMLElement | null;
+    const batteryBarContainer = batteryBarContainers[0] as HTMLElement | null;
+    const batteryRow = this.container.querySelector('#battery-row') as HTMLElement | null;
     
     let gridIsImport = false;
     
     if (battery < 0) {
       // CHARGING
       gridIsImport = true;
+      const wasNotCharging = this.batteryDirection !== 'up';
+      this.batteryDirection = 'up';
+      if (wasNotCharging) {
+        this.batteryPosition = 100; // Start from bottom
+      }
+      if (batteryRow) {
+        batteryRow.classList.add('charging');
+        batteryRow.classList.remove('discharging');
+      }
       if (batterySocLeft) batterySocLeft.style.display = 'none';
       if (batterySocRight) batterySocRight.style.display = 'flex';
       if (batterySocTextRight && batterySoc !== null) {
@@ -555,6 +702,15 @@ export class CompactRenderer {
     } else if (battery > 0) {
       // DISCHARGING
       gridIsImport = false;
+      const wasNotDischarging = this.batteryDirection !== 'down';
+      this.batteryDirection = 'down';
+      if (wasNotDischarging) {
+        this.batteryPosition = -100; // Start from top
+      }
+      if (batteryRow) {
+        batteryRow.classList.add('discharging');
+        batteryRow.classList.remove('charging');
+      }
       if (batterySocLeft) batterySocLeft.style.display = 'flex';
       if (batterySocRight) batterySocRight.style.display = 'none';
       if (batterySocTextLeft && batterySoc !== null) {
@@ -562,10 +718,27 @@ export class CompactRenderer {
       }
     } else {
       // IDLE
+      this.batteryDirection = 'none';
+      if (batteryRow) {
+        batteryRow.classList.remove('charging', 'discharging');
+      }
       if (batterySocLeft) batterySocLeft.style.display = 'none';
       if (batterySocRight) batterySocRight.style.display = 'flex';
       if (batterySocTextRight && batterySoc !== null) {
         batterySocTextRight.textContent = batterySoc.toFixed(1);
+      }
+    }
+    
+    // Update animation speed for battery bar
+    this.batterySpeed = this.getAnimationSpeed(Math.abs(battery));
+    if (batteryBarContainer) {
+      if (this.batterySpeed > 0) {
+        batteryBarContainer.classList.remove('no-flow');
+        if (this.animationFrameId === null) {
+          this.startAnimation();
+        }
+      } else {
+        batteryBarContainer.classList.add('no-flow');
       }
     }
     
