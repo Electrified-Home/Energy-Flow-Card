@@ -1,7 +1,7 @@
 export interface ChartedCardConfig {
   type: 'custom:energy-flow-charted-card';
-  graph_span: string;
-  graph_interval?: string; // e.g., '5min', '1min', '10min'
+  hours_to_show?: number;
+  points_per_hour?: number;
   entities: {
     solar: string;
     grid: string;

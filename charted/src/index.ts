@@ -17,8 +17,8 @@ export class ChartedCard extends LitElement {
   static getStubConfig() {
     return {
       type: 'custom:energy-flow-charted-card',
-      graph_span: '12h',
-      graph_interval: '5min',
+      hours_to_show: 24,
+      points_per_hour: 12,
       entities: {
         solar: '',
         grid: '',

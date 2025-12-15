@@ -55,7 +55,8 @@ export class ChartedRenderer {
 
   private async _fetchData() {
     const now = new Date();
-    const spanMs = this._parseTimeSpan(this.config.graph_span);
+    const hours = this.config.hours_to_show || 24;
+    const spanMs = hours * 60 * 60 * 1000;
     const start = new Date(now.getTime() - spanMs);
 
     const entities = Object.values(this.config.entities).filter(e => e);
@@ -73,8 +74,9 @@ export class ChartedRenderer {
       const entityId = entities[idx];
       if (!entityId) return;
       
-      // Downsample to configurable intervals (default 5 minutes)
-      const intervalMs = this._parseTimeSpan(this.config.graph_interval || '5min');
+      // Downsample based on points_per_hour (default 12 = 5 minute intervals)
+      const pointsPerHour = this.config.points_per_hour || 12;
+      const intervalMs = (60 * 60 * 1000) / pointsPerHour;
       const buckets = new Map<number, number[]>();
       
       entityData.forEach((point: any) => {

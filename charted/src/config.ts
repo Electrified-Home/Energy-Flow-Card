@@ -14,7 +14,8 @@ export interface ChartedCardFormConfig {
 export function getChartedConfigForm() {
   return {
     schema: [
-      { name: 'graph_span', selector: { text: {} } },
+      { name: 'hours_to_show', selector: { number: { min: 1, max: 168, mode: 'box' } } },
+      { name: 'points_per_hour', selector: { number: { min: 1, max: 60, mode: 'box' } } },
       { name: 'entities.solar', selector: { entity: {} } },
       { name: 'entities.grid', selector: { entity: {} } },
       { name: 'entities.battery', selector: { entity: {} } },
@@ -26,8 +27,8 @@ export function getChartedConfigForm() {
 export function normalizeConfig(config: any): ChartedCardConfig {
   return {
     type: 'custom:energy-flow-charted-card',
-    graph_span: config.graph_span || '12h',
-    graph_interval: config.graph_interval || '5min',
+    hours_to_show: config.hours_to_show,
+    points_per_hour: config.points_per_hour,
     entities: {
       solar: config.entities?.solar || '',
       grid: config.entities?.grid || '',
