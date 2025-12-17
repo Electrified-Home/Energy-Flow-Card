@@ -588,6 +588,13 @@ export class CompactRenderer {
   }
 
   /**
+   * Clean up resources
+   */
+  dispose(): void {
+    this.stopAnimation();
+  }
+
+  /**
    * Update the load bar segments
    */
   private updateLoadBar(

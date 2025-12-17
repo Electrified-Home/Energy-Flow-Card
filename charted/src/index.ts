@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { property, state } from 'lit/decorators.js';
-import { normalizeConfig } from './config';
+import { normalizeConfig, getChartedConfigForm } from './config';
 import { ChartedRenderer } from './renderer';
 import type { ChartedCardConfig } from './types';
 import type { HomeAssistant } from '../../shared/src/types/HASS';
@@ -9,9 +9,10 @@ export class ChartedCard extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
   @state() private _config?: ChartedCardConfig;
   private _renderer?: ChartedRenderer;
+  private _refreshInterval?: number;
 
   static getConfigElement() {
-    return document.createElement('energy-flow-charted-card-editor');
+    return undefined;
   }
 
   static getStubConfig() {
@@ -29,7 +30,7 @@ export class ChartedCard extends LitElement {
   }
 
   static getConfigForm() {
-    return [];
+    return getChartedConfigForm();
   }
 
   setConfig(config: ChartedCardConfig) {
@@ -38,6 +39,22 @@ export class ChartedCard extends LitElement {
 
   getCardSize() {
     return 4;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._refreshInterval) {
+      clearInterval(this._refreshInterval);
+      this._refreshInterval = undefined;
+    }
+    if (this._renderer) {
+      this._renderer.dispose();
+      this._renderer = undefined;
+    }
   }
 
   protected updated(changedProps: Map<string, unknown>) {
@@ -59,6 +76,13 @@ export class ChartedCard extends LitElement {
     }
 
     await this._renderer.update(this.hass, this._config);
+    
+    // Start refresh timer after first successful update
+    if (!this._refreshInterval) {
+      this._refreshInterval = window.setInterval(() => {
+        this._updateChart();
+      }, 5 * 60 * 1000);
+    }
   }
 
   protected render() {

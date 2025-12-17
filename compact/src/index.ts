@@ -36,6 +36,10 @@ class CompactHomeEnergyFlowCard extends HTMLElement {
   }
 
   disconnectedCallback() {
+    if (this._compactRenderer) {
+      this._compactRenderer.dispose();
+      this._compactRenderer = undefined;
+    }
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
