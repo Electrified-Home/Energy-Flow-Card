@@ -2,6 +2,8 @@ export interface ChartedCardConfig {
   type: 'custom:energy-flow-charted-card';
   hours_to_show?: number;
   points_per_hour?: number;
+  hours_entity?: string;
+  points_per_hour_entity?: string;
   entities: {
     solar: string;
     grid: string;
@@ -9,6 +11,7 @@ export interface ChartedCardConfig {
     load: string;
   };
   time_bands?: TimeBandConfig[];
+  debug_overlay?: boolean;
 }
 
 export interface StatisticValue {
@@ -47,6 +50,20 @@ export interface LiveValues {
   grid: number;
   battery: number;
   load: number;
+}
+
+export interface LiveDebugPayload {
+  timestamp: number;
+  liveValues: LiveValues;
+  chipPositions: Record<string, number>;
+  stackedPositions: {
+    solarStackY: number;
+    dischargeStackY: number;
+    importStackY: number;
+    chargeStackY: number;
+    exportStackY: number;
+    loadY: number;
+  };
 }
 
 export interface StackedValues {

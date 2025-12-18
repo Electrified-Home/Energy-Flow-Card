@@ -2,6 +2,22 @@ import type { ChartedCardConfig, HistoricalData, StatisticValue } from './types'
 import type { HomeAssistant } from '../../shared/src/types/HASS';
 
 /**
+ * Calculates the bucket interval (ms) based on configured points per hour
+ */
+export function getIntervalMs(pointsPerHour?: number): number {
+  const pph = pointsPerHour && pointsPerHour > 0 ? pointsPerHour : 12;
+  return (60 * 60 * 1000) / pph;
+}
+
+/**
+ * Quantizes a timestamp to the configured interval boundary
+ */
+export function quantizeTimestamp(timestamp: number, pointsPerHour?: number): number {
+  const intervalMs = getIntervalMs(pointsPerHour);
+  return Math.floor(timestamp / intervalMs) * intervalMs;
+}
+
+/**
  * Fetches historical data for all configured entities
  * Uses the Home Assistant history API with minimal_response
  */
@@ -30,7 +46,7 @@ export async function fetchHistoricalData(
     
     // Downsample based on points_per_hour (default 12 = 5 minute intervals)
     const pointsPerHour = config.points_per_hour || 12;
-    const intervalMs = (60 * 60 * 1000) / pointsPerHour;
+    const intervalMs = getIntervalMs(pointsPerHour);
     const buckets = new Map<number, number[]>();
     
     entityData.forEach((point: any) => {
@@ -64,6 +80,54 @@ export async function fetchHistoricalData(
     grid: dataMap[config.entities.grid] || [],
     battery: dataMap[config.entities.battery] || [],
     load: dataMap[config.entities.load] || [],
+  };
+}
+
+/**
+ * Ensures historical data includes a live "now" point aligned to the configured interval.
+ * Uses live hass state when available, falling back to the latest historical mean.
+ */
+export function mergeLivePoint(
+  data: HistoricalData,
+  hass: HomeAssistant,
+  config: ChartedCardConfig
+): { merged: HistoricalData; liveTimestamp: number } {
+  const intervalMs = getIntervalMs(config.points_per_hour);
+  const liveTimestamp = quantizeTimestamp(Date.now(), config.points_per_hour);
+
+  const mergeEntity = (
+    stats: StatisticValue[] | undefined,
+    entityId: string | undefined
+  ): StatisticValue[] => {
+    const list = (stats ? [...stats] : []) as StatisticValue[];
+    const existing = list.find((s) => s.start === liveTimestamp);
+    const fallback = existing?.mean ?? list[list.length - 1]?.mean ?? 0;
+    const liveValue = getLiveValue(hass, entityId, fallback ?? 0);
+    const updatedPoint: StatisticValue = {
+      start: liveTimestamp,
+      end: liveTimestamp + intervalMs,
+      mean: liveValue,
+    };
+
+    if (existing) {
+      const idx = list.findIndex((s) => s.start === liveTimestamp);
+      list[idx] = updatedPoint;
+    } else {
+      list.push(updatedPoint);
+      list.sort((a, b) => a.start - b.start);
+    }
+
+    return list;
+  };
+
+  return {
+    merged: {
+      solar: mergeEntity(data.solar, config.entities.solar),
+      grid: mergeEntity(data.grid, config.entities.grid),
+      battery: mergeEntity(data.battery, config.entities.battery),
+      load: mergeEntity(data.load, config.entities.load),
+    },
+    liveTimestamp,
   };
 }
 

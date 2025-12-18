@@ -14,7 +14,8 @@ import type { HassObservable } from '../../shared/src/utils/HassObservable';
 import { ChipManager } from './ChipManager';
 import { 
   fetchHistoricalData, 
-  buildTimestampArray
+  buildTimestampArray,
+  mergeLivePoint
 } from './calculations';
 import { 
   buildChartOption
@@ -35,16 +36,24 @@ export class ChartedRenderer {
   private resizeObserver: ResizeObserver;
   private chipManager: ChipManager;
   public lastHistoricalData?: HistoricalData;
+  private onLiveValues?: (payload: any) => void;
 
-  constructor(container: HTMLElement, hass: HomeAssistant, config: ChartedCardConfig, hassObservable: HassObservable) {
+  constructor(
+    container: HTMLElement,
+    hass: HomeAssistant,
+    config: ChartedCardConfig,
+    hassObservable: HassObservable,
+    onLiveValues?: (payload: any) => void
+  ) {
     this.hass = hass;
     this.config = config;
     this.container = container;
+    this.onLiveValues = onLiveValues;
     this.chart = echarts.init(container);
     this.chart.on('click', this._handleChartClick);
     
     // ChipManager handles all live chip updates via observable subscriptions
-    this.chipManager = new ChipManager(hassObservable, config, this.chart);
+    this.chipManager = new ChipManager(hassObservable, config, this.chart, this.onLiveValues);
     
     // Watch for container size changes and resize chart
     this.resizeObserver = new ResizeObserver(() => {
@@ -59,10 +68,11 @@ export class ChartedRenderer {
 
     try {
       const data = await fetchHistoricalData(hass, config);
-      this.lastHistoricalData = data;
-      this._renderChart(data);
+      const { merged } = mergeLivePoint(data, hass, config);
+      this.lastHistoricalData = merged;
+      this._renderChart(merged);
       // Initialize chip manager with historical data for fallback values
-      this.chipManager.initialize(data);
+      this.chipManager.initialize(merged);
     } catch (error) {
       console.error('Error updating chart:', error);
     }

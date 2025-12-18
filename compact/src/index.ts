@@ -115,7 +115,7 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
 
   render() {
     if (!this.config || !this.renderData) {
-      return html`<ha-card><div style="padding:16px;">Waiting for configuration...</div></ha-card>`;
+      return html`<ha-card class="compact-card"><div style="padding:16px;">Waiting for configuration...</div></ha-card>`;
     }
 
     const { load, flows, battery, batterySoc } = this.renderData;
@@ -127,7 +127,7 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
     this.animation.setLoadSpeed(load);
 
     return html`
-      <ha-card>
+      <ha-card class="compact-card">
         <div class="compact-view ${this.viewMode === 'compact-battery' ? 'has-battery' : ''}">
           ${this.viewMode === 'compact-battery' ? this.renderBatteryRow(battery, flows, batterySoc) : ''}
           ${this.renderLoadRow(
@@ -314,7 +314,7 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
   private updateSegmentVisibility(): void {
     if (!this.shadowRoot || !this.renderData) return;
 
-    const { flows, battery } = this.renderData;
+    const { flows } = this.renderData;
     const loadBar = this.shadowRoot.querySelector('.compact-row:not(#battery-row) .bar-container') as HTMLElement;
 
     if (loadBar) {

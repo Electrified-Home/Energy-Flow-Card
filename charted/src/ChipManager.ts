@@ -1,7 +1,7 @@
 import type { ECharts } from 'echarts/core';
 import type { HassObservable } from '../../shared/src/utils/HassObservable';
-import type { ChartedCardConfig, ChipPosition, HistoricalData } from './types';
-import { getLiveValue, getValueAtTimestamp, buildTimestampArray } from './calculations';
+import type { ChartedCardConfig, ChipPosition, HistoricalData, LiveDebugPayload } from './types';
+import { getLiveValue, getValueAtTimestamp, buildTimestampArray, quantizeTimestamp } from './calculations';
 import { calculateStackedPositions, resolveChipCollisions, createMarkPoint } from './chartConfig';
 
 /**
@@ -15,11 +15,18 @@ export class ChipManager {
   private updatePending = false;
   private rafId?: number;
   private lastTimestamp?: number;
+  private onLiveValues?: (payload: LiveDebugPayload) => void;
 
-  constructor(hassObservable: HassObservable, config: ChartedCardConfig, chart: ECharts) {
+  constructor(
+    hassObservable: HassObservable,
+    config: ChartedCardConfig,
+    chart: ECharts,
+    onLiveValues?: (payload: LiveDebugPayload) => void
+  ) {
     this.hassObservable = hassObservable;
     this.config = config;
     this.chart = chart;
+    this.onLiveValues = onLiveValues;
 
     this.setupSubscriptions();
   }
@@ -31,6 +38,38 @@ export class ChipManager {
         this.scheduleUpdate();
       });
     });
+  }
+
+  /**
+   * Upserts a data point at the current interval boundary for live updates
+   */
+  private upsertSeriesData(
+    series: any,
+    timestamp: number,
+    rawValue: number,
+    mode: 'positive' | 'negative' | 'line'
+  ): any {
+    const data: [number, number][] = Array.isArray(series.data)
+      ? series.data.map((pt: any) => [pt[0], pt[1]])
+      : [];
+
+    const value = mode === 'positive'
+      ? Math.max(0, rawValue)
+      : mode === 'negative'
+        ? Math.min(0, rawValue)
+        : rawValue;
+
+    const idx = data.findIndex((d) => Array.isArray(d) && d[0] === timestamp);
+    const point: [number, number] = [timestamp, value];
+
+    if (idx >= 0) {
+      data[idx] = point;
+    } else {
+      data.push(point);
+      data.sort((a, b) => a[0] - b[0]);
+    }
+
+    return { ...series, data };
   }
 
   /**
@@ -74,13 +113,16 @@ export class ChipManager {
     const hass = this.hassObservable.hass;
     if (!hass) return;
 
-    // Get current live values from hass
+    // Get current live values from hass (use getLiveValue for proper fallback handling)
     this.liveValues = {
-      solar: parseFloat(hass.states[this.config.entities.solar]?.state || '0') || this.liveValues.solar,
-      grid: parseFloat(hass.states[this.config.entities.grid]?.state || '0') || this.liveValues.grid,
-      battery: parseFloat(hass.states[this.config.entities.battery]?.state || '0') || this.liveValues.battery,
-      load: parseFloat(hass.states[this.config.entities.load]?.state || '0') || this.liveValues.load,
+      solar: getLiveValue(hass, this.config.entities.solar, this.liveValues.solar),
+      grid: getLiveValue(hass, this.config.entities.grid, this.liveValues.grid),
+      battery: getLiveValue(hass, this.config.entities.battery, this.liveValues.battery),
+      load: getLiveValue(hass, this.config.entities.load, this.liveValues.load),
     };
+
+    // Align to the active interval and render
+    this.lastTimestamp = quantizeTimestamp(Date.now(), this.config.points_per_hour);
 
     this.renderChips();
   }
@@ -91,11 +133,7 @@ export class ChipManager {
   renderChips(): void {
     const option = this.chart.getOption() as any;
     if (!option.series) return;
-
-    const xAxis = Array.isArray(option.xAxis) ? option.xAxis[0] : option.xAxis;
-    const axisData = xAxis?.data as number[] | undefined;
-    const axisLastTs = Array.isArray(axisData) && axisData.length > 0 ? axisData[axisData.length - 1] : undefined;
-    const lastTs = axisLastTs ?? this.lastTimestamp;
+    const lastTs = this.lastTimestamp ?? quantizeTimestamp(Date.now(), this.config.points_per_hour);
     if (!lastTs) return;
 
     const stackedPositions = calculateStackedPositions(this.liveValues);
@@ -111,21 +149,54 @@ export class ChipManager {
 
     const chipPositions = resolveChipCollisions(visibleChips, this.liveValues.load, this.chart);
 
-    const hasTimeBands = (this.config.time_bands || []).length > 0;
-    const offset = hasTimeBands ? 1 : 0;
+    // Emit live values for debug overlay (not chart-dependent)
+    this.onLiveValues?.({
+      timestamp: lastTs,
+      liveValues: { ...this.liveValues },
+      chipPositions,
+      stackedPositions,
+    });
 
-    // Build series array with ONLY markPoint updates
-    const series = option.series.map((s: any, i: number) => {
-      const seriesIndex = i - offset;
-      
-      if (seriesIndex === 0) return { ...s, markPoint: showChip(this.liveValues.solar) ? createMarkPoint(chipPositions['Solar'] ?? stackedPositions.solarStackY, this.liveValues.solar, 'Solar', false, lastTs, this.config.entities.solar, 30) : undefined };
-      if (seriesIndex === 1) return { ...s, markPoint: (this.liveValues.battery >= 0 && showChip(this.liveValues.battery)) ? createMarkPoint(chipPositions['Discharge'] ?? stackedPositions.dischargeStackY, this.liveValues.battery, 'Discharge', false, lastTs, this.config.entities.battery, 30) : undefined };
-      if (seriesIndex === 2) return { ...s, markPoint: (this.liveValues.grid >= 0 && showChip(this.liveValues.grid)) ? createMarkPoint(chipPositions['Import'] ?? stackedPositions.importStackY, this.liveValues.grid, 'Import', false, lastTs, this.config.entities.grid, 30) : undefined };
-      if (seriesIndex === 3) return { ...s, markPoint: (this.liveValues.battery < 0 && showChip(this.liveValues.battery)) ? createMarkPoint(chipPositions['Charge'] ?? stackedPositions.chargeStackY, this.liveValues.battery, 'Charge', true, lastTs, this.config.entities.battery, 30) : undefined };
-      if (seriesIndex === 4) return { ...s, markPoint: (this.liveValues.grid < 0 && showChip(this.liveValues.grid)) ? createMarkPoint(chipPositions['Export'] ?? stackedPositions.exportStackY, this.liveValues.grid, 'Export', true, lastTs, this.config.entities.grid, 30) : undefined };
-      if (seriesIndex === 5) return { ...s, markPoint: createMarkPoint(chipPositions['Load'] ?? this.liveValues.load, this.liveValues.load, 'Load', false, lastTs, this.config.entities.load, 30) };
-      
-      return s;
+    // Build series array with data updates and markPoint placement based on names
+    const series = option.series.map((s: any) => {
+      switch (s.name) {
+        case 'Solar': {
+          const updated = this.upsertSeriesData(s, lastTs, this.liveValues.solar, 'positive');
+          return showChip(this.liveValues.solar)
+            ? { ...updated, markPoint: createMarkPoint(chipPositions['Solar'] ?? stackedPositions.solarStackY, this.liveValues.solar, 'Solar', false, lastTs, this.config.entities.solar, 30) }
+            : { ...updated, markPoint: undefined };
+        }
+        case 'Discharge': {
+          const updated = this.upsertSeriesData(s, lastTs, this.liveValues.battery, 'positive');
+          return (this.liveValues.battery >= 0 && showChip(this.liveValues.battery))
+            ? { ...updated, markPoint: createMarkPoint(chipPositions['Discharge'] ?? stackedPositions.dischargeStackY, this.liveValues.battery, 'Discharge', false, lastTs, this.config.entities.battery, 30) }
+            : { ...updated, markPoint: undefined };
+        }
+        case 'Import': {
+          const updated = this.upsertSeriesData(s, lastTs, this.liveValues.grid, 'positive');
+          return (this.liveValues.grid >= 0 && showChip(this.liveValues.grid))
+            ? { ...updated, markPoint: createMarkPoint(chipPositions['Import'] ?? stackedPositions.importStackY, this.liveValues.grid, 'Import', false, lastTs, this.config.entities.grid, 30) }
+            : { ...updated, markPoint: undefined };
+        }
+        case 'Charge': {
+          const updated = this.upsertSeriesData(s, lastTs, this.liveValues.battery, 'negative');
+          return (this.liveValues.battery < 0 && showChip(this.liveValues.battery))
+            ? { ...updated, markPoint: createMarkPoint(chipPositions['Charge'] ?? stackedPositions.chargeStackY, this.liveValues.battery, 'Charge', true, lastTs, this.config.entities.battery, 30) }
+            : { ...updated, markPoint: undefined };
+        }
+        case 'Export': {
+          const updated = this.upsertSeriesData(s, lastTs, this.liveValues.grid, 'negative');
+          return (this.liveValues.grid < 0 && showChip(this.liveValues.grid))
+            ? { ...updated, markPoint: createMarkPoint(chipPositions['Export'] ?? stackedPositions.exportStackY, this.liveValues.grid, 'Export', true, lastTs, this.config.entities.grid, 30) }
+            : { ...updated, markPoint: undefined };
+        }
+        case 'Load': {
+          const updated = this.upsertSeriesData(s, lastTs, this.liveValues.load, 'line');
+          return { ...updated, markPoint: createMarkPoint(chipPositions['Load'] ?? this.liveValues.load, this.liveValues.load, 'Load', false, lastTs, this.config.entities.load, 30) };
+        }
+        default:
+          return s;
+      }
     });
 
     // Update chart with modified series

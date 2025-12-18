@@ -78,6 +78,23 @@ describe('HassObservable', () => {
       expect(callback).toHaveBeenCalledWith('2000');
     });
 
+    it('should fire callbacks when state changes on same object instance', () => {
+      // Simulate HA mutating the same state object without replacing it
+      const sharedState = { state: '1500', entity_id: 'sensor.solar_power' };
+      const hass1 = { states: { 'sensor.solar_power': sharedState } } as any;
+      const hass2 = { states: { 'sensor.solar_power': sharedState } } as any;
+
+      observable.updateHass(hass1);
+      const callback = vi.fn();
+      observable.subscribe('sensor.solar_power', callback);
+
+      callback.mockClear();
+      sharedState.state = '1750';
+      observable.updateHass(hass2);
+
+      expect(callback).toHaveBeenCalledWith('1750');
+    });
+
     it('should not fire callbacks when entity state unchanged', () => {
       observable.updateHass(mockHass);
       const callback = vi.fn();

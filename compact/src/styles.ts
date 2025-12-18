@@ -5,13 +5,15 @@
 import { css } from 'lit';
 
 export const compactCardStyles = css`
-  :host {
+  :host,
+  compact-home-energy-flow-card {
     display: block;
     width: 100%;
     height: 100%;
   }
-  
-  ha-card {
+
+  .compact-card,
+  ha-card.compact-card {
     padding: 16px;
     box-sizing: border-box;
     width: 100%;
@@ -20,25 +22,25 @@ export const compactCardStyles = css`
     flex-direction: column;
     justify-content: center;
   }
-  
-  .compact-view {
+
+  .compact-card .compact-view {
     display: flex;
     flex-direction: column;
     width: 100%;
   }
-  
-  .compact-view.has-battery {
+
+  .compact-card .compact-view.has-battery {
     gap: 12px;
   }
-  
-  .compact-row {
+
+  .compact-card .compact-row {
     display: flex;
     align-items: center;
     gap: 12px;
     width: 100%;
   }
-  
-  .bar-container {
+
+  .compact-card .bar-container {
     flex: 1;
     height: 60px;
     background: rgb(40, 40, 40);
@@ -49,8 +51,8 @@ export const compactCardStyles = css`
     --gradient-x: -100%;
     --gradient-y: 0%;
   }
-  
-  .bar-container::before {
+
+  .compact-card .bar-container::before {
     content: '';
     position: absolute;
     top: 0;
@@ -72,12 +74,12 @@ export const compactCardStyles = css`
     opacity: 1;
     transition: opacity 0.5s ease-out;
   }
-  
-  .bar-container.no-flow::before {
+
+  .compact-card .bar-container.no-flow::before {
     opacity: 0;
   }
-  
-  #battery-row .bar-container::before {
+
+  .compact-card #battery-row .bar-container::before {
     background: linear-gradient(
       180deg,
       rgba(255, 255, 255, 0) 0%,
@@ -88,8 +90,8 @@ export const compactCardStyles = css`
     );
     transform: translateY(var(--gradient-y));
   }
-  
-  .bar-segment {
+
+  .compact-card .bar-segment {
     height: 100%;
     display: flex;
     align-items: center;
@@ -102,48 +104,48 @@ export const compactCardStyles = css`
     position: relative;
     cursor: pointer;
   }
-  
-  .bar-segment:hover {
+
+  .compact-card .bar-segment:hover {
     filter: brightness(1.2);
   }
-  
-  .bar-segment-content {
+
+  .compact-card .bar-segment-content {
     display: flex;
     align-items: center;
     gap: 6px;
     white-space: nowrap;
   }
-  
-  .bar-segment-icon {
+
+  .compact-card .bar-segment-icon {
     width: 24px;
     height: 24px;
     flex-shrink: 0;
     opacity: 1;
     color: rgb(255, 255, 255);
   }
-  
-  .bar-segment-label {
+
+  .compact-card .bar-segment-label {
     text-shadow: 0 1px 2px rgba(0,0,0,0.3);
   }
-  
-  .bar-segment[data-width-px] .bar-segment-label {
+
+  .compact-card .bar-segment[data-width-px] .bar-segment-label {
     display: none;
   }
-  
-  .bar-segment[data-width-px="show-label"] .bar-segment-label {
+
+  .compact-card .bar-segment[data-width-px="show-label"] .bar-segment-label {
     display: inline;
   }
-  
-  .bar-segment[data-width-px] .bar-segment-icon {
+
+  .compact-card .bar-segment[data-width-px] .bar-segment-icon {
     display: none;
   }
-  
-  .bar-segment[data-width-px="show-icon"] .bar-segment-icon,
-  .bar-segment[data-width-px="show-label"] .bar-segment-icon {
+
+  .compact-card .bar-segment[data-width-px="show-icon"] .bar-segment-icon,
+  .compact-card .bar-segment[data-width-px="show-label"] .bar-segment-icon {
     display: block;
   }
-  
-  .row-value {
+
+  .compact-card .row-value {
     font-size: 24px;
     font-weight: 600;
     color: rgb(255, 255, 255);
@@ -155,17 +157,17 @@ export const compactCardStyles = css`
     gap: 8px;
     cursor: pointer;
   }
-  
-  .row-value:hover {
+
+  .compact-card .row-value:hover {
     filter: brightness(1.1);
   }
-  
-  .row-value.battery-discharge {
+
+  .compact-card .row-value.battery-discharge {
     text-align: left;
     flex-direction: row-reverse;
   }
-  
-  .row-icon {
+
+  .compact-card .row-icon {
     width: 28px;
     height: 28px;
     flex-shrink: 0;
@@ -173,15 +175,15 @@ export const compactCardStyles = css`
     display: flex;
     align-items: center;
   }
-  
-  .row-text {
+
+  .compact-card .row-text {
     display: flex;
     align-items: baseline;
     gap: 4px;
     line-height: 1;
   }
-  
-  .row-unit {
+
+  .compact-card .row-unit {
     font-size: 14px;
     color: rgb(160, 160, 160);
     margin-left: 4px;

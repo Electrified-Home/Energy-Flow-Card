@@ -26,8 +26,9 @@ import type { HomeAssistant } from '../types/HASS';
  * ```
  */
 export class HassObservable {
-  private prevHass?: HomeAssistant;
   private currentHass?: HomeAssistant;
+  // Track last seen state strings per subscribed entity to detect changes even if HA mutates existing objects
+  private prevStates: Map<string, string | undefined> = new Map();
   private subscriptions = new Map<string, Set<(state: string) => void>>();
 
   /**
@@ -42,17 +43,22 @@ export class HassObservable {
    * Compares subscribed entity states and fires callbacks for changed values.
    */
   updateHass(hass: HomeAssistant): void {
-    this.prevHass = this.currentHass;
     this.currentHass = hass;
-    
+
     // Check only subscribed entities for changes
     for (const entityId of this.subscriptions.keys()) {
-      const oldState = this.prevHass?.states?.[entityId]?.state;
-      const newState = this.currentHass?.states?.[entityId]?.state;
-      
-      // Dispatch if state changed
-      if (newState !== undefined && newState !== oldState) {
-        this.dispatch(entityId, newState);
+      const prev = this.prevStates.get(entityId);
+      const next = this.currentHass?.states?.[entityId]?.state;
+
+      if (next !== undefined && next !== prev) {
+        this.dispatch(entityId, next);
+      }
+
+      // Update tracked state snapshot
+      if (next !== undefined) {
+        this.prevStates.set(entityId, next);
+      } else {
+        this.prevStates.delete(entityId);
       }
     }
   }

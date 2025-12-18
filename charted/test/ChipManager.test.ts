@@ -68,6 +68,37 @@ describe('ChipManager', () => {
   });
 
   describe('live updates', () => {
+    it('emits live debug payload on render', async () => {
+      let payload: any;
+      chipManager = new ChipManager(hassObservable, mockConfig, mockChart, (p) => payload = p);
+
+      const historicalData: HistoricalData = {
+        solar: [{ start: 1000, end: 2000, mean: 1500 }],
+        grid: [{ start: 1000, end: 2000, mean: 200 }],
+        battery: [{ start: 1000, end: 2000, mean: -500 }],
+        load: [{ start: 1000, end: 2000, mean: 1200 }],
+      };
+      chipManager.initialize(historicalData);
+
+      mockChart.getOption.mockReturnValue({
+        series: [
+          { name: 'Solar' },
+          { name: 'Discharge' },
+          { name: 'Import' },
+          { name: 'Charge' },
+          { name: 'Export' },
+          { name: 'Load' },
+        ],
+      });
+
+      mockChart.setOption.mockClear();
+      hassObservable.updateHass(mockHass);
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      expect(payload).toBeDefined();
+      expect(payload.liveValues.load).toBeGreaterThan(0);
+      expect(payload.chipPositions).toBeDefined();
+    });
     it('batches multiple entity updates into single render', async () => {
       const historicalData: HistoricalData = {
         solar: [{ start: 1000, end: 2000, mean: 1500 }],
