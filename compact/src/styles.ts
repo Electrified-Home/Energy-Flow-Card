@@ -48,17 +48,25 @@ export const compactCardStyles = css`
     overflow: hidden;
     display: flex;
     position: relative;
-    --gradient-x: -100%;
-    --gradient-y: 0%;
   }
 
-  .compact-card .bar-container::before {
-    content: '';
+  /* Transform-only shine overlay keeps GPU-friendly movement without repainting the gradient. */
+  .compact-card .shine-overlay {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
+    width: 120%;
     height: 100%;
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0.75;
+    will-change: transform, opacity;
+    transform: translateX(-100%);
+    transition: opacity 0.5s ease-out;
+  }
+
+  .compact-card .shine-overlay.shine-horizontal {
+    width: 90%;
     background: linear-gradient(
       90deg,
       rgba(255, 255, 255, 0) 0%,
@@ -67,29 +75,11 @@ export const compactCardStyles = css`
       rgba(255, 255, 255, 0) 70%,
       rgba(255, 255, 255, 0) 100%
     );
-    pointer-events: none;
-    z-index: 10;
-    will-change: transform, opacity;
-    transform: translateX(var(--gradient-x));
-    opacity: 1;
-    transition: opacity 0.5s ease-out;
   }
 
-  .compact-card.animation-disabled .bar-container,
-  .compact-card.animation-disabled .bar-container::before,
-  .compact-card.animation-disabled .bar-segment {
-    transition: none;
-  }
-
-  .compact-card.animation-disabled .bar-container::before {
-    display: none;
-  }
-
-  .compact-card .bar-container.no-flow::before {
-    opacity: 0;
-  }
-
-  .compact-card #battery-row .bar-container::before {
+  .compact-card .shine-overlay.shine-vertical {
+    width: 100%;
+    height: 150%;
     background: linear-gradient(
       180deg,
       rgba(255, 255, 255, 0) 0%,
@@ -98,7 +88,38 @@ export const compactCardStyles = css`
       rgba(255, 255, 255, 0) 70%,
       rgba(255, 255, 255, 0) 100%
     );
-    transform: translateY(var(--gradient-y));
+    transform: translateY(-100%);
+  }
+
+  .compact-card.animation-disabled .bar-container,
+  .compact-card.animation-disabled .bar-segment {
+    transition: none;
+  }
+
+  .compact-card.animation-disabled .shine-overlay {
+    display: none;
+  }
+
+  .compact-card .bar-container.no-flow .shine-overlay {
+    opacity: 0;
+  }
+
+  @keyframes shine-horizontal {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
+
+  @keyframes shine-vertical {
+    from { transform: translateY(-100%); }
+    to { transform: translateY(100%); }
+  }
+
+  .compact-card .shine-fallback-horizontal {
+    animation: shine-horizontal 60s linear infinite;
+  }
+
+  .compact-card .shine-fallback-vertical {
+    animation: shine-vertical 60s linear infinite;
   }
 
   .compact-card .bar-segment {

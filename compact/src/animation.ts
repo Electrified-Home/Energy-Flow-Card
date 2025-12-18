@@ -1,127 +1,233 @@
 /**
- * Animation controller for compact card bar gradients
+ * Animation controller for compact card bar gradients.
+ * Uses WAAPI playbackRate to change speed without restarting and avoid rAF churn.
  */
+type BatteryDirection = 'up' | 'down' | 'none';
+
 export class AnimationController {
-  private animationFrameId: number | null = null;
-  private loadPosition = 0;
-  private batteryPosition = 0;
+  private loadOverlays: HTMLElement[] = [];
+  private batteryOverlays: HTMLElement[] = [];
+  private loadAnimations: Animation[] = [];
+  private batteryAnimations: Animation[] = [];
   private loadSpeed = 0;
   private batterySpeed = 0;
-  private batteryDirection: 'up' | 'down' | 'none' = 'none';
+  private batteryDirection: BatteryDirection = 'none';
+  private initialized = false;
 
-  private lastTickTime = 0;
-
-  private loadBarElement?: HTMLElement;
-  private batteryBarElement?: HTMLElement;
-
-  // 30fps is sufficient and friendlier to WKWebView.
-  private readonly minFrameMs = 1000 / 30;
   // Ignore tiny flows to avoid flicker/ghost animation.
-  private readonly minAnimatedWatts = 10;
+  private readonly minAnimatedWatts = 8;
+  private readonly referenceWatts = 100;
+  private readonly referenceSpeed = 2.5; // % per second at reference watts
+  private readonly baseDurationMs = 20_000; // ms for 200% travel
+  private readonly activeOpacity = 0.75;
+  private readonly waapiSupported = typeof Element !== 'undefined' && !!Element.prototype.animate;
 
   getAnimationSpeed(watts: number): number {
     if (watts <= this.minAnimatedWatts) return 0;
-    const referenceWatts = 100;
-    const referenceSpeed = 2.5; // % per second at 100W
-    return (watts / referenceWatts) * referenceSpeed;
+    return (watts / this.referenceWatts) * this.referenceSpeed;
   }
 
   setLoadSpeed(watts: number): void {
     this.loadSpeed = this.getAnimationSpeed(watts);
-    this.stopIfIdle();
+    this.applyLoadAnimation();
   }
 
-  setBatteryAnimation(watts: number, direction: 'up' | 'down' | 'none'): void {
+  setBatteryAnimation(watts: number, direction: BatteryDirection): void {
     this.batterySpeed = this.getAnimationSpeed(Math.abs(watts));
-
-    if (direction !== this.batteryDirection) {
-      if (direction === 'up') this.batteryPosition = 100;
-      else if (direction === 'down') this.batteryPosition = -100;
-    }
-
     this.batteryDirection = direction;
-    this.stopIfIdle();
+    this.applyBatteryAnimation();
   }
 
   start(shadowRoot: ShadowRoot | null): void {
-    if (this.animationFrameId !== null) return;
     if (!shadowRoot) return;
 
-    // Don’t start a hot loop if idle.
-    if (!this.hasWork()) return;
+    const loadNodes = typeof (shadowRoot as any).querySelectorAll === 'function'
+      ? (shadowRoot as any).querySelectorAll('.load-shine')
+      : [typeof (shadowRoot as any).querySelector === 'function'
+          ? (shadowRoot as any).querySelector('.load-shine')
+          : null];
 
-    this.loadBarElement = shadowRoot.querySelector(
-      '.compact-row:not(#battery-row) .bar-container'
-    ) as HTMLElement;
+    const batteryNodes = typeof (shadowRoot as any).querySelectorAll === 'function'
+      ? (shadowRoot as any).querySelectorAll('.battery-shine')
+      : [typeof (shadowRoot as any).querySelector === 'function'
+          ? (shadowRoot as any).querySelector('.battery-shine')
+          : null];
 
-    this.batteryBarElement = shadowRoot.querySelector(
-      '#battery-row .bar-container'
-    ) as HTMLElement;
+    const loadAttached = this.attachOverlays('load', loadNodes, 'x');
+    const batteryAttached = this.attachOverlays('battery', batteryNodes, 'y');
 
-    this.lastTickTime = performance.now();
-
-    const animate = (currentTime: number) => {
-      if (!this.hasWork()) {
-        this.stop();
-        return;
-      }
-
-      const elapsedMs = currentTime - this.lastTickTime;
-
-      // Throttle to ~30fps; if not enough time has passed, schedule next tick.
-      if (elapsedMs < this.minFrameMs) {
-        this.animationFrameId = requestAnimationFrame(animate);
-        return;
-      }
-
-      const deltaTime = elapsedMs / 1000;
-      this.lastTickTime = currentTime;
-
-      if (this.loadSpeed > 0 && this.loadBarElement) {
-        this.loadPosition += this.loadSpeed * deltaTime;
-        if (this.loadPosition > 100) this.loadPosition = -100;
-        this.loadBarElement.style.setProperty('--gradient-x', `${this.loadPosition}%`);
-      }
-
-      if (this.batterySpeed > 0 && this.batteryDirection !== 'none' && this.batteryBarElement) {
-        if (this.batteryDirection === 'up') {
-          this.batteryPosition -= this.batterySpeed * deltaTime;
-          if (this.batteryPosition < -100) this.batteryPosition = 100;
-        } else {
-          this.batteryPosition += this.batterySpeed * deltaTime;
-          if (this.batteryPosition > 100) this.batteryPosition = -100;
-        }
-
-        this.batteryBarElement.style.setProperty('--gradient-y', `${this.batteryPosition}%`);
-      }
-
-      this.animationFrameId = requestAnimationFrame(animate);
-    };
-
-    this.animationFrameId = requestAnimationFrame(animate);
+    // Only mark running when we actually have overlays to animate. This lets us retry
+    // after the first data-render instead of getting stuck in an uninitialized state.
+    this.initialized = loadAttached || batteryAttached;
+    if (this.initialized) this.applyPlaybackStates();
   }
 
   stop(): void {
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-    }
-    this.loadBarElement = undefined;
-    this.batteryBarElement = undefined;
+    this.cancelAnimations('load');
+    this.cancelAnimations('battery');
+    this.initialized = false;
   }
 
   isRunning(): boolean {
-    return this.animationFrameId !== null;
+    return this.initialized;
   }
 
-  private hasWork(): boolean {
-    const loadActive = this.loadSpeed > 0;
-    const batteryActive = this.batterySpeed > 0 && this.batteryDirection !== 'none';
-    return loadActive || batteryActive;
+  private attachOverlays(
+    kind: 'load' | 'battery',
+    overlays: Iterable<Element | null>,
+    axis: 'x' | 'y'
+  ): boolean {
+    const currentOverlays = kind === 'load' ? this.loadOverlays : this.batteryOverlays;
+    const overlayArr = Array.from(overlays).filter((node): node is HTMLElement => node instanceof HTMLElement);
+
+    // Reuse existing overlays if the nodes are identical to avoid restarting animations.
+    const unchanged =
+      currentOverlays.length === overlayArr.length &&
+      currentOverlays.every((node, idx) => node === overlayArr[idx]);
+    if (unchanged) return overlayArr.length > 0;
+
+    this.cancelAnimations(kind);
+    if (overlayArr.length === 0) return false;
+
+    const animations: Animation[] = [];
+    overlayArr.forEach((overlay, index) => {
+      if (this.waapiSupported) {
+        const animation = overlay.animate(
+          axis === 'x'
+            ? [{ transform: 'translateX(-100%)' }, { transform: 'translateX(100%)' }]
+            : [{ transform: 'translateY(-100%)' }, { transform: 'translateY(100%)' }],
+          {
+            duration: this.baseDurationMs,
+            easing: 'linear',
+            iterations: Number.POSITIVE_INFINITY,
+            fill: 'both'
+          }
+        );
+
+        // Phase-shift each overlay so sweeps are staggered, reducing idle gaps without speeding up.
+        if (animation.effect?.getComputedTiming) {
+          const offset = (index / overlayArr.length) * this.baseDurationMs;
+          animation.currentTime = offset;
+        }
+
+        animation.pause();
+        animations.push(animation);
+      } else {
+        const fallbackClass = axis === 'x' ? 'shine-fallback-horizontal' : 'shine-fallback-vertical';
+        overlay.classList.add(fallbackClass);
+        overlay.style.animationPlayState = 'paused';
+        overlay.style.animationDelay = `-${(index / overlayArr.length) * this.baseDurationMs}ms`;
+      }
+    });
+
+    if (kind === 'load') {
+      this.loadOverlays = overlayArr;
+      this.loadAnimations = animations;
+    } else {
+      this.batteryOverlays = overlayArr;
+      this.batteryAnimations = animations;
+    }
+
+    return true;
   }
 
-  private stopIfIdle(): void {
-    if (this.animationFrameId === null) return;
-    if (!this.hasWork()) this.stop();
+  private cancelAnimations(kind: 'load' | 'battery'): void {
+    const animations = kind === 'load' ? this.loadAnimations : this.batteryAnimations;
+    const overlays = kind === 'load' ? this.loadOverlays : this.batteryOverlays;
+
+    animations.forEach((animation) => animation.cancel());
+    overlays.forEach((overlay) => {
+      overlay.classList.remove('shine-fallback-horizontal', 'shine-fallback-vertical');
+      overlay.style.animationPlayState = '';
+      overlay.style.animationDirection = '';
+      overlay.style.animationDelay = '';
+    });
+
+    if (kind === 'load') {
+      this.loadAnimations = [];
+      this.loadOverlays = [];
+    } else {
+      this.batteryAnimations = [];
+      this.batteryOverlays = [];
+    }
+  }
+
+  private applyPlaybackStates(): void {
+    this.applyLoadAnimation();
+    this.applyBatteryAnimation();
+  }
+
+  private applyLoadAnimation(): void {
+    const active = this.loadSpeed > 0;
+    const opacity = active ? `${this.activeOpacity}` : "0";
+
+    if (this.waapiSupported) {
+      if (this.loadAnimations.length === 0) return;
+      if (!active) {
+        this.loadAnimations.forEach((anim) => anim.pause());
+        return;
+      }
+
+      const rate = this.getPlaybackRate(this.loadSpeed);
+      this.loadAnimations.forEach((anim) => {
+        anim.playbackRate = rate;
+        if (anim.playState !== 'running') anim.play();
+      });
+    }
+
+    if (this.loadOverlays.length) {
+      this.loadOverlays.forEach((overlay) => {
+        overlay.style.animationPlayState = active ? 'running' : 'paused';
+        overlay.style.opacity = opacity;
+      });
+    }
+  }
+
+  private applyBatteryAnimation(): void {
+    const active = this.batterySpeed > 0 && this.batteryDirection !== 'none';
+    const opacity = active ? `${this.activeOpacity}` : "0";
+
+    if (this.waapiSupported) {
+      if (this.batteryAnimations.length === 0) return;
+      if (!active) {
+        this.batteryAnimations.forEach((anim) => anim.pause());
+        return;
+      }
+
+      const playbackRate = this.getPlaybackRate(this.batterySpeed);
+      const isReverse = this.batteryDirection === 'up';
+
+      this.batteryAnimations.forEach((anim) => {
+        // Keep playbackRate positive for endless looping; flip direction via timing.
+        anim.playbackRate = playbackRate;
+
+        if (anim.effect?.updateTiming) {
+          anim.effect.updateTiming({ direction: isReverse ? 'reverse' : 'normal' });
+        }
+
+        if (anim.playState !== 'running') {
+          try {
+            anim.play();
+          } catch (_err) {
+            anim.pause();
+          }
+        }
+      });
+    }
+
+    if (this.batteryOverlays.length) {
+      this.batteryOverlays.forEach((overlay) => {
+        overlay.style.animationDirection = this.batteryDirection === 'up' ? 'reverse' : 'normal';
+        overlay.style.animationPlayState = active ? 'running' : 'paused';
+        overlay.style.opacity = opacity;
+      });
+    }
+  }
+
+  private getPlaybackRate(speed: number): number {
+    if (speed <= 0) return 0;
+
+    // Slow overall velocity to ~1/3 of prior while keeping phased overlays for frequency.
+    return speed / (this.referenceSpeed * 3);
   }
 }

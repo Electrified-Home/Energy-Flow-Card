@@ -49,27 +49,27 @@ describe('Compact Card Styles', () => {
 
   it('should contain gradient animation CSS variables', () => {
     const cssText = compactCardStyles.cssText || compactCardStyles.toString();
-    expect(cssText).toContain('--gradient-x');
-    expect(cssText).toContain('--gradient-y');
+    expect(cssText).toContain('shine-horizontal');
+    expect(cssText).toContain('shine-vertical');
   });
 
   it('should contain gradient pseudo-element', () => {
     const cssText = compactCardStyles.cssText || compactCardStyles.toString();
-    expect(cssText).toContain('.bar-container::before');
+    expect(cssText).toContain('.shine-overlay');
     expect(cssText).toContain('linear-gradient');
-    expect(cssText).toContain('transform: translateX(var(--gradient-x))');
+    expect(cssText).toContain('transform: translateX(-100%)');
   });
 
   it('should contain no-flow modifier for gradient', () => {
     const cssText = compactCardStyles.cssText || compactCardStyles.toString();
-    expect(cssText).toContain('.bar-container.no-flow::before');
+    expect(cssText).toContain('.bar-container.no-flow .shine-overlay');
     expect(cssText).toContain('opacity: 0');
   });
 
   it('should contain battery-row specific gradient', () => {
     const cssText = compactCardStyles.cssText || compactCardStyles.toString();
-    expect(cssText).toContain('#battery-row .bar-container::before');
-    expect(cssText).toContain('transform: translateY(var(--gradient-y))');
+    expect(cssText).toContain('shine-vertical');
+    expect(cssText).toContain('translateY(-100%)');
   });
 
   it('should contain bar-segment styles', () => {

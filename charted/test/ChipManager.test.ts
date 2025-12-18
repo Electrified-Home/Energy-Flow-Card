@@ -99,6 +99,13 @@ describe('ChipManager', () => {
       expect(payload.liveValues.load).toBeGreaterThan(0);
       expect(payload.chipPositions).toBeDefined();
     });
+
+    it('ignores render when chart option is missing', () => {
+      mockChart.getOption.mockReturnValue(undefined);
+
+      expect(() => chipManager['renderChips']()).not.toThrow();
+      expect(mockChart.setOption).not.toHaveBeenCalled();
+    });
     it('batches multiple entity updates into single render', async () => {
       const historicalData: HistoricalData = {
         solar: [{ start: 1000, end: 2000, mean: 1500 }],

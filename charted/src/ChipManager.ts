@@ -131,8 +131,8 @@ export class ChipManager {
    * Render chips using current live values
    */
   renderChips(): void {
-    const option = this.chart.getOption() as any;
-    if (!option.series) return;
+    const option = this.chart?.getOption?.() as any;
+    if (!option || !option.series) return;
     const lastTs = this.lastTimestamp ?? quantizeTimestamp(Date.now(), this.config.points_per_hour);
     if (!lastTs) return;
 

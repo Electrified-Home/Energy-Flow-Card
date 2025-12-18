@@ -4,37 +4,53 @@ import { AnimationController } from '../src/animation';
 describe('AnimationController', () => {
   let controller: AnimationController;
   let mockShadowRoot: ShadowRoot;
-  let mockLoadBar: HTMLElement;
-  let mockBatteryBar: HTMLElement;
+  let mockLoadOverlay: HTMLElement;
+  let mockBatteryOverlay: HTMLElement;
+  let loadAnimation: any;
+  let batteryAnimation: any;
 
   beforeEach(() => {
+    // Ensure WAAPI path is taken in tests
+    (Element.prototype as any).animate = (Element.prototype as any).animate || vi.fn();
+
     controller = new AnimationController();
 
     // Create mock DOM elements
-    mockLoadBar = document.createElement('div');
-    mockLoadBar.className = 'bar-container';
-    mockLoadBar.style.setProperty = vi.fn();
+    loadAnimation = {
+      playbackRate: 1,
+      playState: 'paused',
+      play: vi.fn(() => { loadAnimation.playState = 'running'; }),
+      pause: vi.fn(() => { loadAnimation.playState = 'paused'; }),
+      cancel: vi.fn()
+    } as any;
 
-    mockBatteryBar = document.createElement('div');
-    mockBatteryBar.className = 'bar-container';
-    mockBatteryBar.style.setProperty = vi.fn();
+    batteryAnimation = {
+      playbackRate: 1,
+      playState: 'paused',
+      play: vi.fn(() => { batteryAnimation.playState = 'running'; }),
+      pause: vi.fn(() => { batteryAnimation.playState = 'paused'; }),
+      cancel: vi.fn(),
+      effect: {
+        updateTiming: vi.fn(),
+        getComputedTiming: vi.fn(() => ({ duration: 20_000 }))
+      }
+    } as any;
 
-    const compactRow = document.createElement('div');
-    compactRow.className = 'compact-row';
-    compactRow.appendChild(mockLoadBar);
+    mockLoadOverlay = document.createElement('div');
+    mockLoadOverlay.className = 'shine-overlay load-shine';
+    mockLoadOverlay.animate = vi.fn(() => loadAnimation);
 
-    const batteryRow = document.createElement('div');
-    batteryRow.id = 'battery-row';
-    batteryRow.className = 'compact-row';
-    batteryRow.appendChild(mockBatteryBar);
+    mockBatteryOverlay = document.createElement('div');
+    mockBatteryOverlay.className = 'shine-overlay battery-shine';
+    mockBatteryOverlay.animate = vi.fn(() => batteryAnimation);
 
     mockShadowRoot = {
       querySelector: vi.fn((selector: string) => {
-        if (selector === '.compact-row:not(#battery-row) .bar-container') {
-          return mockLoadBar;
+        if (selector === '.load-shine') {
+          return mockLoadOverlay;
         }
-        if (selector === '#battery-row .bar-container') {
-          return mockBatteryBar;
+        if (selector === '.battery-shine') {
+          return mockBatteryOverlay;
         }
         return null;
       })
@@ -124,8 +140,8 @@ describe('AnimationController', () => {
       controller.setLoadSpeed(100);
       controller.start(mockShadowRoot);
       
-      expect(mockShadowRoot.querySelector).toHaveBeenCalledWith('.compact-row:not(#battery-row) .bar-container');
-      expect(mockShadowRoot.querySelector).toHaveBeenCalledWith('#battery-row .bar-container');
+      expect(mockShadowRoot.querySelector).toHaveBeenCalledWith('.load-shine');
+      expect(mockShadowRoot.querySelector).toHaveBeenCalledWith('.battery-shine');
       
       controller.stop();
     });
@@ -177,87 +193,47 @@ describe('AnimationController', () => {
   });
 
   describe('animation loop', () => {
-    beforeEach(() => {
-      vi.useFakeTimers();
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it('should update load bar gradient position', () => {
+    it('should set load overlay playbackRate and play', () => {
       controller.setLoadSpeed(100);
       controller.start(mockShadowRoot);
 
-      // Advance time
-      vi.advanceTimersByTime(100);
-
-      // Should have set gradient-x property
-      expect(mockLoadBar.style.setProperty).toHaveBeenCalledWith(
-        '--gradient-x',
-        expect.stringMatching(/%$/)
-      );
+      expect(loadAnimation.playbackRate).toBeCloseTo(1 / 3); // 100W => slowed reference rate
+      expect(loadAnimation.play).toHaveBeenCalled();
 
       controller.stop();
     });
 
-    it('should update battery bar gradient position when charging', () => {
+    it('should set battery overlay playbackRate positive and reverse when charging (up)', () => {
       controller.setBatteryAnimation(200, 'up');
       controller.start(mockShadowRoot);
 
-      // Advance time
-      vi.advanceTimersByTime(100);
-
-      // Should have set gradient-y property
-      expect(mockBatteryBar.style.setProperty).toHaveBeenCalledWith(
-        '--gradient-y',
-        expect.stringMatching(/%$/)
-      );
+      expect(batteryAnimation.playbackRate).toBeGreaterThan(0);
+      expect(batteryAnimation.playbackRate).toBeCloseTo(2 / 3); // 200W => slowed reference
+      expect(batteryAnimation.effect.updateTiming).toHaveBeenCalledWith({ direction: 'reverse' });
+      expect(batteryAnimation.play).toHaveBeenCalled();
 
       controller.stop();
     });
 
-    it('should update battery bar gradient position when discharging', () => {
+    it('should set battery overlay playbackRate positive when discharging (down)', () => {
       controller.setBatteryAnimation(200, 'down');
       controller.start(mockShadowRoot);
 
-      // Advance time
-      vi.advanceTimersByTime(100);
-
-      // Should have set gradient-y property
-      expect(mockBatteryBar.style.setProperty).toHaveBeenCalledWith(
-        '--gradient-y',
-        expect.stringMatching(/%$/)
-      );
+      expect(batteryAnimation.playbackRate).toBeGreaterThan(0);
+      expect(batteryAnimation.playbackRate).toBeCloseTo(2 / 3);
+      expect(batteryAnimation.effect.updateTiming).toHaveBeenCalledWith({ direction: 'normal' });
+      expect(batteryAnimation.play).toHaveBeenCalled();
 
       controller.stop();
     });
 
-    it('should not update when speed is zero', () => {
+    it('should pause animations when speed is zero', () => {
       controller.setLoadSpeed(0);
+      controller.setBatteryAnimation(0, 'none');
       controller.start(mockShadowRoot);
 
-      // Clear any initial calls
-      vi.clearAllMocks();
-
-      // Advance time
-      vi.advanceTimersByTime(100);
-
-      // Should not have updated gradient
-      expect(mockLoadBar.style.setProperty).not.toHaveBeenCalled();
-
-      controller.stop();
-    });
-
-    it('should wrap load position from >100 to -100', () => {
-      // This would need internal state access or time-based testing
-      // For now, we verify it doesn't crash with large time advances
-      controller.setLoadSpeed(1000); // Very fast
-      controller.start(mockShadowRoot);
-
-      vi.advanceTimersByTime(5000);
-
-      expect(controller.isRunning()).toBe(true);
+      expect(loadAnimation.pause).toHaveBeenCalled();
+      expect(batteryAnimation.pause).toHaveBeenCalled();
 
       controller.stop();
     });

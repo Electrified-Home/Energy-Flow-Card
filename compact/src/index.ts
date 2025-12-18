@@ -181,6 +181,7 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
     return html`
       <div class="compact-row">
         <div class="bar-container ${this.animation.getAnimationSpeed(load) > 0 ? '' : 'no-flow'}">
+          ${this.renderShineOverlay('horizontal')}
           <div
             id="grid-segment"
             class="bar-segment"
@@ -250,6 +251,7 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
           </div>
         </div>
         <div class="bar-container ${this.animation.getAnimationSpeed(Math.abs(battery)) > 0 ? '' : 'no-flow'}">
+          ${this.renderShineOverlay('vertical')}
           <div
             class="bar-segment"
             style="background: ${gridColorToUse}; width: ${batteryData.gridPercent}%;"
@@ -309,6 +311,18 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
     return getIcon(this.config!, this.hass, type, fallbacks[type]);
   }
 
+  private renderShineOverlay(orientation: 'horizontal' | 'vertical') {
+    const classes = orientation === 'horizontal'
+      ? 'shine-overlay shine-horizontal load-shine'
+      : 'shine-overlay shine-vertical battery-shine';
+
+    // Two phased overlays to increase sweep frequency without speeding up a single shine.
+    return html`
+      <div class="${classes}"></div>
+      <div class="${classes}"></div>
+    `;
+  }
+
   private handleClick(action: unknown, entity?: string): void {
     if (!this.hass) return;
     handleAction(this.hass, this.fireEvent.bind(this), action, entity);
@@ -331,9 +345,9 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
   updated(changedProperties: Map<string, any>): void {
     super.updated(changedProperties);
 
-    // Start animation if not running (after DOM is rendered)
+    // Ensure animations are attached to the current DOM (re-run after each render).
     if (this.isAnimationEnabled()) {
-      if (!this.animation.isRunning() && this.shadowRoot) {
+      if (this.shadowRoot) {
         this.animation.start(this.shadowRoot);
       }
     } else if (this.animation.isRunning()) {
@@ -358,21 +372,24 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
     const loadBar = this.shadowRoot.querySelector('.compact-row:not(#battery-row) .bar-container') as HTMLElement;
 
     if (loadBar) {
-      const productionSeg = this.shadowRoot.querySelector('#production-segment') as HTMLElement;
-      const batterySeg = this.shadowRoot.querySelector('#battery-segment') as HTMLElement;
-      const gridSeg = this.shadowRoot.querySelector('#grid-segment') as HTMLElement;
+      const loadBarWidth = loadBar.clientWidth;
+      if (loadBarWidth > 0) {
+        const productionSeg = this.shadowRoot.querySelector('#production-segment') as HTMLElement;
+        const batterySeg = this.shadowRoot.querySelector('#battery-segment') as HTMLElement;
+        const gridSeg = this.shadowRoot.querySelector('#grid-segment') as HTMLElement;
 
-      if (productionSeg) {
-        const widthPx = (parseFloat(productionSeg.style.width) / 100) * loadBar.clientWidth;
-        updateSegmentVisibility(productionSeg, widthPx, flows.productionToLoad > 0);
-      }
-      if (batterySeg) {
-        const widthPx = (parseFloat(batterySeg.style.width) / 100) * loadBar.clientWidth;
-        updateSegmentVisibility(batterySeg, widthPx, flows.batteryToLoad > 0);
-      }
-      if (gridSeg) {
-        const widthPx = (parseFloat(gridSeg.style.width) / 100) * loadBar.clientWidth;
-        updateSegmentVisibility(gridSeg, widthPx, flows.gridToLoad > 0);
+        if (productionSeg) {
+          const widthPx = (parseFloat(productionSeg.style.width) / 100) * loadBarWidth;
+          updateSegmentVisibility(productionSeg, widthPx, flows.productionToLoad > 0);
+        }
+        if (batterySeg) {
+          const widthPx = (parseFloat(batterySeg.style.width) / 100) * loadBarWidth;
+          updateSegmentVisibility(batterySeg, widthPx, flows.batteryToLoad > 0);
+        }
+        if (gridSeg) {
+          const widthPx = (parseFloat(gridSeg.style.width) / 100) * loadBarWidth;
+          updateSegmentVisibility(gridSeg, widthPx, flows.gridToLoad > 0);
+        }
       }
     }
 
@@ -380,13 +397,16 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
     if (this.viewMode === 'compact-battery') {
       const batteryBar = this.shadowRoot.querySelector('#battery-row .bar-container') as HTMLElement;
       if (batteryBar) {
-        const segments = batteryBar.querySelectorAll('.bar-segment');
-        segments.forEach((seg) => {
-          const widthPx = (parseFloat((seg as HTMLElement).style.width) / 100) * batteryBar.clientWidth;
-          const label = seg.querySelector('.bar-segment-label');
-          const hasValue = !!(label?.textContent && label.textContent.trim() !== '');
-          updateSegmentVisibility(seg as HTMLElement, widthPx, hasValue);
-        });
+        const batteryBarWidth = batteryBar.clientWidth;
+        if (batteryBarWidth > 0) {
+          const segments = batteryBar.querySelectorAll('.bar-segment');
+          segments.forEach((seg) => {
+            const widthPx = (parseFloat((seg as HTMLElement).style.width) / 100) * batteryBarWidth;
+            const label = seg.querySelector('.bar-segment-label');
+            const hasValue = !!(label?.textContent && label.textContent.trim() !== '');
+            updateSegmentVisibility(seg as HTMLElement, widthPx, hasValue);
+          });
+        }
       }
     }
   }
