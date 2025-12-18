@@ -25,6 +25,8 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
   @property({ attribute: false }) config?: CompactCardConfig;
   @state() private viewMode: CompactViewMode = 'compact';
   @state() private renderData?: CompactRenderData;
+  private segmentVisibilityRaf: number | null = null;
+  private renderDataQueued = false;
   
   // Colors (darker hues - 50% brightness)
   private readonly productionColor = '#256028'; // Dark green
@@ -48,6 +50,11 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.animation.stop();
+
+    if (this.segmentVisibilityRaf !== null) {
+      cancelAnimationFrame(this.segmentVisibilityRaf);
+      this.segmentVisibilityRaf = null;
+    }
   }
 
   setConfig(config: any): void {
@@ -68,22 +75,30 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
 
   protected setupSubscriptions(): void {
     if (!this.config) return;
+    const queueUpdate = () => {
+      if (this.renderDataQueued) return;
+      this.renderDataQueued = true;
+      queueMicrotask(() => {
+        this.renderDataQueued = false;
+        this.updateRenderData();
+      });
+    };
 
     // Subscribe to all energy entities
     if (this.config.grid?.entity) {
-      this.subscribe(this.config.grid.entity, () => this.updateRenderData());
+      this.subscribe(this.config.grid.entity, queueUpdate);
     }
     if (this.config.load?.entity) {
-      this.subscribe(this.config.load.entity, () => this.updateRenderData());
+      this.subscribe(this.config.load.entity, queueUpdate);
     }
     if (this.config.production?.entity) {
-      this.subscribe(this.config.production.entity, () => this.updateRenderData());
+      this.subscribe(this.config.production.entity, queueUpdate);
     }
     if (this.config.battery?.entity) {
-      this.subscribe(this.config.battery.entity, () => this.updateRenderData());
+      this.subscribe(this.config.battery.entity, queueUpdate);
     }
     if (this.config.battery?.soc_entity) {
-      this.subscribe(this.config.battery.soc_entity, () => this.updateRenderData());
+      this.subscribe(this.config.battery.soc_entity, queueUpdate);
     }
   }
 
@@ -327,9 +342,12 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
 
     // Update segment visibility after render
     if (changedProperties.has('renderData') && this.renderData) {
-      requestAnimationFrame(() => {
-        this.updateSegmentVisibility();
-      });
+      if (this.segmentVisibilityRaf === null) {
+        this.segmentVisibilityRaf = requestAnimationFrame(() => {
+          this.segmentVisibilityRaf = null;
+          this.updateSegmentVisibility();
+        });
+      }
     }
   }
 

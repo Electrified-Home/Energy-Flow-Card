@@ -102,11 +102,13 @@ describe('AnimationController', () => {
     });
 
     it('should start animation loop', () => {
+      controller.setLoadSpeed(100);
       controller.start(mockShadowRoot);
       expect(controller.isRunning()).toBe(true);
     });
 
     it('should not start multiple times', () => {
+      controller.setLoadSpeed(100);
       controller.start(mockShadowRoot);
       const firstCheck = controller.isRunning();
       controller.start(mockShadowRoot);
@@ -119,6 +121,7 @@ describe('AnimationController', () => {
     });
 
     it('should query for bar elements', () => {
+      controller.setLoadSpeed(100);
       controller.start(mockShadowRoot);
       
       expect(mockShadowRoot.querySelector).toHaveBeenCalledWith('.compact-row:not(#battery-row) .bar-container');
@@ -130,6 +133,7 @@ describe('AnimationController', () => {
 
   describe('stop', () => {
     it('should stop animation loop', () => {
+      controller.setLoadSpeed(100);
       controller.start(mockShadowRoot);
       expect(controller.isRunning()).toBe(true);
       
@@ -143,6 +147,7 @@ describe('AnimationController', () => {
     });
 
     it('should clear bar element references', () => {
+      controller.setLoadSpeed(100);
       controller.start(mockShadowRoot);
       controller.stop();
       
@@ -157,12 +162,14 @@ describe('AnimationController', () => {
     });
 
     it('should return true after start', () => {
+      controller.setLoadSpeed(100);
       controller.start(mockShadowRoot);
       expect(controller.isRunning()).toBe(true);
       controller.stop();
     });
 
     it('should return false after stop', () => {
+      controller.setLoadSpeed(100);
       controller.start(mockShadowRoot);
       controller.stop();
       expect(controller.isRunning()).toBe(false);

@@ -1,7 +1,6 @@
 /**
  * Animation controller for compact card bar gradients
  */
-
 export class AnimationController {
   private animationFrameId: number | null = null;
   private loadPosition = 0;
@@ -9,71 +8,81 @@ export class AnimationController {
   private loadSpeed = 0;
   private batterySpeed = 0;
   private batteryDirection: 'up' | 'down' | 'none' = 'none';
-  private lastAnimationTime = 0;
-  
+
+  private lastTickTime = 0;
+
   private loadBarElement?: HTMLElement;
   private batteryBarElement?: HTMLElement;
 
-  /**
-   * Calculate animation speed based on power flow
-   * Higher power = faster animation
-   */
+  // 30fps is sufficient and friendlier to WKWebView.
+  private readonly minFrameMs = 1000 / 30;
+  // Ignore tiny flows to avoid flicker/ghost animation.
+  private readonly minAnimatedWatts = 10;
+
   getAnimationSpeed(watts: number): number {
-    if (watts <= 0) return 0;
+    if (watts <= this.minAnimatedWatts) return 0;
     const referenceWatts = 100;
     const referenceSpeed = 2.5; // % per second at 100W
     return (watts / referenceWatts) * referenceSpeed;
   }
 
-  /**
-   * Update load bar animation speed
-   */
   setLoadSpeed(watts: number): void {
     this.loadSpeed = this.getAnimationSpeed(watts);
+    this.stopIfIdle();
   }
 
-  /**
-   * Update battery bar animation speed and direction
-   */
   setBatteryAnimation(watts: number, direction: 'up' | 'down' | 'none'): void {
     this.batterySpeed = this.getAnimationSpeed(Math.abs(watts));
-    
-    // Reset position when direction changes
+
     if (direction !== this.batteryDirection) {
-      if (direction === 'up') {
-        this.batteryPosition = 100; // Start from bottom for charging
-      } else if (direction === 'down') {
-        this.batteryPosition = -100; // Start from top for discharging
-      }
+      if (direction === 'up') this.batteryPosition = 100;
+      else if (direction === 'down') this.batteryPosition = -100;
     }
-    
+
     this.batteryDirection = direction;
+    this.stopIfIdle();
   }
 
-  /**
-   * Start the animation loop
-   */
   start(shadowRoot: ShadowRoot | null): void {
     if (this.animationFrameId !== null) return;
     if (!shadowRoot) return;
 
-    this.loadBarElement = shadowRoot.querySelector('.compact-row:not(#battery-row) .bar-container') as HTMLElement;
-    this.batteryBarElement = shadowRoot.querySelector('#battery-row .bar-container') as HTMLElement;
-    
-    this.lastAnimationTime = performance.now();
+    // Don’t start a hot loop if idle.
+    if (!this.hasWork()) return;
+
+    this.loadBarElement = shadowRoot.querySelector(
+      '.compact-row:not(#battery-row) .bar-container'
+    ) as HTMLElement;
+
+    this.batteryBarElement = shadowRoot.querySelector(
+      '#battery-row .bar-container'
+    ) as HTMLElement;
+
+    this.lastTickTime = performance.now();
 
     const animate = (currentTime: number) => {
-      const deltaTime = (currentTime - this.lastAnimationTime) / 1000;
-      this.lastAnimationTime = currentTime;
+      if (!this.hasWork()) {
+        this.stop();
+        return;
+      }
 
-      // Update load bar horizontal gradient
+      const elapsedMs = currentTime - this.lastTickTime;
+
+      // Throttle to ~30fps; if not enough time has passed, schedule next tick.
+      if (elapsedMs < this.minFrameMs) {
+        this.animationFrameId = requestAnimationFrame(animate);
+        return;
+      }
+
+      const deltaTime = elapsedMs / 1000;
+      this.lastTickTime = currentTime;
+
       if (this.loadSpeed > 0 && this.loadBarElement) {
         this.loadPosition += this.loadSpeed * deltaTime;
         if (this.loadPosition > 100) this.loadPosition = -100;
         this.loadBarElement.style.setProperty('--gradient-x', `${this.loadPosition}%`);
       }
 
-      // Update battery bar vertical gradient
       if (this.batterySpeed > 0 && this.batteryDirection !== 'none' && this.batteryBarElement) {
         if (this.batteryDirection === 'up') {
           this.batteryPosition -= this.batterySpeed * deltaTime;
@@ -82,6 +91,7 @@ export class AnimationController {
           this.batteryPosition += this.batterySpeed * deltaTime;
           if (this.batteryPosition > 100) this.batteryPosition = -100;
         }
+
         this.batteryBarElement.style.setProperty('--gradient-y', `${this.batteryPosition}%`);
       }
 
@@ -91,9 +101,6 @@ export class AnimationController {
     this.animationFrameId = requestAnimationFrame(animate);
   }
 
-  /**
-   * Stop the animation loop
-   */
   stop(): void {
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
@@ -103,10 +110,18 @@ export class AnimationController {
     this.batteryBarElement = undefined;
   }
 
-  /**
-   * Check if animation is running
-   */
   isRunning(): boolean {
     return this.animationFrameId !== null;
+  }
+
+  private hasWork(): boolean {
+    const loadActive = this.loadSpeed > 0;
+    const batteryActive = this.batterySpeed > 0 && this.batteryDirection !== 'none';
+    return loadActive || batteryActive;
+  }
+
+  private stopIfIdle(): void {
+    if (this.animationFrameId === null) return;
+    if (!this.hasWork()) this.stop();
   }
 }
