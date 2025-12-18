@@ -48,6 +48,10 @@ export class Meter {
   needleState: NeedleState;
   private _lastAnimationTime: number | null;
   private _animationFrameId: number | null;
+  
+  // Cached needle references
+  private _needle: SVGLineElement | null;
+  private _ghostNeedle: SVGLineElement | null;
 
   constructor(
     id: string,
@@ -78,6 +82,8 @@ export class Meter {
     this.entityId = entityId;
     this.fireEventCallback = fireEventCallback;
     this.element = null;
+    this._needle = null;
+    this._ghostNeedle = null;
 
     // Meter geometry constants
     this.radius = 50;
@@ -217,24 +223,28 @@ export class Meter {
         this.needleState.ghost = this.needleState.current + maxLag;
       }
 
+      // Cache needle references on first frame
+      if (!this._needle && this.element) {
+        this._needle = this.element.querySelector(`#needle-${this.id}`);
+        this._ghostNeedle = this.element.querySelector(`#ghost-needle-${this.id}`);
+      }
+      
       // Update main needle
-      const needle = this.element.querySelector(`#needle-${this.id}`);
-      if (needle) {
+      if (this._needle) {
         const needleRad = (this.needleState.current * Math.PI) / 180;
         const needleX = this.centerX + needleLength * Math.cos(needleRad);
         const needleY = this.centerY - needleLength * Math.sin(needleRad);
-        needle.setAttribute('x2', String(needleX));
-        needle.setAttribute('y2', String(needleY));
+        this._needle.setAttribute('x2', String(needleX));
+        this._needle.setAttribute('y2', String(needleY));
       }
 
       // Update ghost needle
-      const ghostNeedle = this.element.querySelector(`#ghost-needle-${this.id}`);
-      if (ghostNeedle) {
+      if (this._ghostNeedle) {
         const ghostRad = (this.needleState.ghost * Math.PI) / 180;
         const ghostX = this.centerX + needleLength * Math.cos(ghostRad);
         const ghostY = this.centerY - needleLength * Math.sin(ghostRad);
-        ghostNeedle.setAttribute('x2', String(ghostX));
-        ghostNeedle.setAttribute('y2', String(ghostY));
+        this._ghostNeedle.setAttribute('x2', String(ghostX));
+        this._ghostNeedle.setAttribute('y2', String(ghostY));
       }
 
       this._animationFrameId = requestAnimationFrame(animate);
@@ -249,6 +259,8 @@ export class Meter {
       this._animationFrameId = null;
       this._lastAnimationTime = null;
     }
+    this._needle = null;
+    this._ghostNeedle = null;
   }
 
   /**

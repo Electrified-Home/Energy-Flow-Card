@@ -6,10 +6,25 @@ import type { ChartedCardConfig } from './types';
 import type { HomeAssistant } from '../../shared/src/types/HASS';
 
 export class ChartedCard extends LitElement {
-  @property({ attribute: false }) public hass!: HomeAssistant;
+  private _hass!: HomeAssistant;
   @state() private _config?: ChartedCardConfig;
   private _renderer?: ChartedRenderer;
   private _refreshInterval?: number;
+  private _intersectionObserver?: IntersectionObserver;
+  private _lastHistoryFetch: number = 0;
+
+  set hass(hass: HomeAssistant) {
+    this._hass = hass;
+    
+    // Update live chip values immediately when hass changes
+    if (this._renderer && this._renderer.lastHistoricalData) {
+      this._renderer.updateLiveValues(hass);
+    }
+  }
+
+  get hass(): HomeAssistant {
+    return this._hass;
+  }
 
   static getConfigElement() {
     return undefined;
@@ -43,10 +58,43 @@ export class ChartedCard extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    
+    // Refresh history data at the same interval as data points
+    // Default: 12 points per hour = 5 minute intervals
+    const pointsPerHour = this._config?.points_per_hour || 12;
+    const refreshMs = (60 * 60 * 1000) / pointsPerHour;
+    this._refreshInterval = window.setInterval(() => {
+      this._fetchHistoryData();
+    }, refreshMs);
+    
+    // Watch for visibility changes (e.g., tab switching)
+    this._intersectionObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          if (this._renderer) {
+            // Card became visible, resize and fetch if stale
+            this._renderer.resize();
+            const pointsPerHour = this._config?.points_per_hour || 12;
+            const staleDuration = (60 * 60 * 1000) / pointsPerHour;
+            if (Date.now() - this._lastHistoryFetch > staleDuration) {
+              this._fetchHistoryData();
+            }
+          } else {
+            // Card became visible but renderer not created yet (hidden tab on load)
+            this._updateChart();
+          }
+        }
+      });
+    });
+    this._intersectionObserver.observe(this);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    if (this._intersectionObserver) {
+      this._intersectionObserver.disconnect();
+      this._intersectionObserver = undefined;
+    }
     if (this._refreshInterval) {
       clearInterval(this._refreshInterval);
       this._refreshInterval = undefined;
@@ -60,7 +108,8 @@ export class ChartedCard extends LitElement {
   protected updated(changedProps: Map<string, unknown>) {
     super.updated(changedProps);
     
-    if (changedProps.has('hass') || changedProps.has('_config')) {
+    if (changedProps.has('_config')) {
+      // Config changed - full chart rebuild
       this._updateChart();
     }
   }
@@ -76,13 +125,18 @@ export class ChartedCard extends LitElement {
     }
 
     await this._renderer.update(this.hass, this._config);
-    
-    // Start refresh timer after first successful update
-    if (!this._refreshInterval) {
-      this._refreshInterval = window.setInterval(() => {
-        this._updateChart();
-      }, 5 * 60 * 1000);
-    }
+    this._lastHistoryFetch = Date.now();
+  }
+
+  private async _fetchHistoryData() {
+    if (!this._renderer || !this.hass || !this._config) return;
+    await this._renderer.update(this.hass, this._config);
+    this._lastHistoryFetch = Date.now();
+  }
+
+  private _updateLiveValues() {
+    if (!this._renderer || !this.hass) return;
+    this._renderer.updateLiveValues(this.hass);
   }
 
   protected render() {

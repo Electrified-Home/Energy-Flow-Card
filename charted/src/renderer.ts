@@ -26,6 +26,7 @@ export class ChartedRenderer {
   private config: ChartedCardConfig;
   private container: HTMLElement;
   private resizeObserver: ResizeObserver;
+  public lastHistoricalData?: Record<string, StatisticValue[]>;
 
   constructor(container: HTMLElement, hass: HomeAssistant, config: ChartedCardConfig) {
     this.hass = hass;
@@ -47,10 +48,26 @@ export class ChartedRenderer {
 
     try {
       const data = await this._fetchData();
+      this.lastHistoricalData = data;
       this._renderChart(data);
     } catch (error) {
       console.error('Error updating chart:', error);
     }
+  }
+
+  updateLiveValues(hass: HomeAssistant) {
+    console.log('[ChartedRenderer] updateLiveValues called');
+    this.hass = hass;
+    
+    // Only update if we have historical data cached
+    if (!this.lastHistoricalData) {
+      console.warn('[ChartedRenderer] updateLiveValues called but no historical data cached');
+      return;
+    }
+    
+    console.log('[ChartedRenderer] Re-rendering chart with updated hass');
+    // Re-render with cached historical data but fresh live values
+    this._renderChart(this.lastHistoricalData);
   }
 
   private async _fetchData() {
@@ -517,7 +534,9 @@ export class ChartedRenderer {
       series: datasets,
     };
 
-    this.chart.setOption(option);
+    // Use notMerge=false to update existing chart (faster for live updates)
+    // Use replaceMerge=['series'] to replace series but keep grid/axis
+    this.chart.setOption(option, { notMerge: false, replaceMerge: ['series'] });
   }
 
   private _handleChartClick = (params: any) => {
@@ -540,7 +559,9 @@ export class ChartedRenderer {
     if (!entityId) return fallback;
     const stateObj: any = (this.hass as any)?.states?.[entityId];
     const live = stateObj ? parseFloat(stateObj.state) : NaN;
-    return Number.isFinite(live) ? live : fallback;
+    const result = Number.isFinite(live) ? live : fallback;
+    console.log(`[_getLiveValue] ${entityId}: live=${live}, fallback=${fallback}, result=${result}`);
+    return result;
   }
 
   private _buildTimeBandAreas(rangeStart: number, rangeEnd: number, bands: ChartedCardConfig['time_bands']): any[] {
@@ -713,6 +734,10 @@ export class ChartedRenderer {
       case 'd': return value * 24 * 60 * 60 * 1000;
       default: return 12 * 60 * 60 * 1000;
     }
+  }
+
+  resize() {
+    this.chart.resize();
   }
 
   dispose() {
