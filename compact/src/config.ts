@@ -25,6 +25,7 @@ export function getCompactConfigForm() {
       { name: 'battery_hold_action', label: 'Battery Hold Action', selector: { 'ui-action': {} } },
       { name: 'battery_soc_entity', label: 'Battery SOC (%) Entity', selector: { entity: { domain: 'sensor' } } },
       { name: 'invert_battery_data', label: 'Invert Battery Data', selector: { boolean: {} } },
+      { name: 'animation', label: 'Enable Animation', selector: { boolean: {} }, default: false },
     ],
   };
 }
@@ -32,7 +33,11 @@ export function getCompactConfigForm() {
 // Normalize flat config to nested structure (no names)
 export function normalizeCompactConfig(config: any): EnergyFlowCardConfig {
   if (config.load) {
-    return config as EnergyFlowCardConfig;
+    const withAnimation = { ...config };
+    if (withAnimation.animation === undefined) {
+      withAnimation.animation = false;
+    }
+    return withAnimation as EnergyFlowCardConfig;
   }
 
   const normalizeEntity = (prefix: string): any => {
@@ -70,10 +75,18 @@ export function normalizeCompactConfig(config: any): EnergyFlowCardConfig {
     return config as EnergyFlowCardConfig;
   }
 
-  return {
+  const normalizedConfig: any = {
     load,
     grid,
     production,
     battery,
   };
+
+  if (config.animation !== undefined) {
+    normalizedConfig.animation = config.animation;
+  } else {
+    normalizedConfig.animation = false;
+  }
+
+  return normalizedConfig as EnergyFlowCardConfig;
 }

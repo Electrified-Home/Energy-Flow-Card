@@ -75,6 +75,16 @@ export const compactCardStyles = css`
     transition: opacity 0.5s ease-out;
   }
 
+  .compact-card.animation-disabled .bar-container,
+  .compact-card.animation-disabled .bar-container::before,
+  .compact-card.animation-disabled .bar-segment {
+    transition: none;
+  }
+
+  .compact-card.animation-disabled .bar-container::before {
+    display: none;
+  }
+
   .compact-card .bar-container.no-flow::before {
     opacity: 0;
   }

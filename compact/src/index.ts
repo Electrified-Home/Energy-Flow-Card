@@ -19,8 +19,10 @@ import { AnimationController } from './animation';
 import { calculateLoadBarPercentages, calculateBatteryBarData } from './calculations';
 import { compactCardStyles } from './styles';
 
+type CompactCardConfig = EnergyFlowCardConfig & { animation?: boolean };
+
 class CompactHomeEnergyFlowCard extends HassCardBase {
-  @property({ attribute: false }) config?: EnergyFlowCardConfig;
+  @property({ attribute: false }) config?: CompactCardConfig;
   @state() private viewMode: CompactViewMode = 'compact';
   @state() private renderData?: CompactRenderData;
   
@@ -49,11 +51,18 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
   }
 
   setConfig(config: any): void {
-    this.config = normalizeCompactConfig(config);
+    const normalized = normalizeCompactConfig(config) as CompactCardConfig;
+    if (normalized.animation === undefined) {
+      normalized.animation = false;
+    }
+    this.config = normalized;
     // If already connected, reset subscriptions for new config
     // (On first load, connectedCallback will handle setup)
     if (this.isConnected) {
       this.resetSubscriptions();
+      if (!this.isAnimationEnabled()) {
+        this.animation.stop();
+      }
     }
   }
 
@@ -119,15 +128,18 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
     }
 
     const { load, flows, battery, batterySoc } = this.renderData;
+    const animationsEnabled = this.isAnimationEnabled();
 
     // Calculate load bar percentages
     const loadBarPercentages = calculateLoadBarPercentages(load, flows);
 
-    // Update animation speed
-    this.animation.setLoadSpeed(load);
+    // Update animation speed if enabled
+    if (animationsEnabled) {
+      this.animation.setLoadSpeed(load);
+    }
 
     return html`
-      <ha-card class="compact-card">
+      <ha-card class="compact-card ${animationsEnabled ? '' : 'animation-disabled'}">
         <div class="compact-view ${this.viewMode === 'compact-battery' ? 'has-battery' : ''}">
           ${this.viewMode === 'compact-battery' ? this.renderBatteryRow(battery, flows, batterySoc) : ''}
           ${this.renderLoadRow(
@@ -202,7 +214,9 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
     const batteryData = calculateBatteryBarData(battery, flows);
 
     // Update animation
-    this.animation.setBatteryAnimation(battery, batteryData.direction);
+    if (this.isAnimationEnabled()) {
+      this.animation.setBatteryAnimation(battery, batteryData.direction);
+    }
 
     const gridColorToUse = batteryData.gridIsImport ? this.gridColor : this.returnColor;
     const socDisplay = batterySoc !== null ? batterySoc.toFixed(1) : '--';
@@ -266,6 +280,10 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
     `;
   }
 
+  private isAnimationEnabled(): boolean {
+    return this.config?.animation !== false;
+  }
+
   private getIconFor(type: EntityType): string {
     const fallbacks: Record<EntityType, string> = {
       grid: 'mdi:transmission-tower',
@@ -299,8 +317,12 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
     super.updated(changedProperties);
 
     // Start animation if not running (after DOM is rendered)
-    if (!this.animation.isRunning() && this.shadowRoot) {
-      this.animation.start(this.shadowRoot);
+    if (this.isAnimationEnabled()) {
+      if (!this.animation.isRunning() && this.shadowRoot) {
+        this.animation.start(this.shadowRoot);
+      }
+    } else if (this.animation.isRunning()) {
+      this.animation.stop();
     }
 
     // Update segment visibility after render
