@@ -165,14 +165,13 @@ export class AnimationController {
       if (this.loadAnimations.length === 0) return;
       if (!active) {
         this.loadAnimations.forEach((anim) => anim.pause());
-        return;
+      } else {
+        const rate = this.getPlaybackRate(this.loadSpeed);
+        this.loadAnimations.forEach((anim) => {
+          anim.playbackRate = rate;
+          if (anim.playState !== 'running') anim.play();
+        });
       }
-
-      const rate = this.getPlaybackRate(this.loadSpeed);
-      this.loadAnimations.forEach((anim) => {
-        anim.playbackRate = rate;
-        if (anim.playState !== 'running') anim.play();
-      });
     }
 
     if (this.loadOverlays.length) {
@@ -191,28 +190,27 @@ export class AnimationController {
       if (this.batteryAnimations.length === 0) return;
       if (!active) {
         this.batteryAnimations.forEach((anim) => anim.pause());
-        return;
-      }
+      } else {
+        const playbackRate = this.getPlaybackRate(this.batterySpeed);
+        const isReverse = this.batteryDirection === 'up';
 
-      const playbackRate = this.getPlaybackRate(this.batterySpeed);
-      const isReverse = this.batteryDirection === 'up';
+        this.batteryAnimations.forEach((anim) => {
+          // Keep playbackRate positive for endless looping; flip direction via timing.
+          anim.playbackRate = playbackRate;
 
-      this.batteryAnimations.forEach((anim) => {
-        // Keep playbackRate positive for endless looping; flip direction via timing.
-        anim.playbackRate = playbackRate;
-
-        if (anim.effect?.updateTiming) {
-          anim.effect.updateTiming({ direction: isReverse ? 'reverse' : 'normal' });
-        }
-
-        if (anim.playState !== 'running') {
-          try {
-            anim.play();
-          } catch (_err) {
-            anim.pause();
+          if (anim.effect?.updateTiming) {
+            anim.effect.updateTiming({ direction: isReverse ? 'reverse' : 'normal' });
           }
-        }
-      });
+
+          if (anim.playState !== 'running') {
+            try {
+              anim.play();
+            } catch (_err) {
+              anim.pause();
+            }
+          }
+        });
+      }
     }
 
     if (this.batteryOverlays.length) {
