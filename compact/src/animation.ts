@@ -227,7 +227,7 @@ export class AnimationController {
   private getPlaybackRate(speed: number): number {
     if (speed <= 0) return 0;
 
-    // Slow overall velocity to ~1/3 of prior while keeping phased overlays for frequency.
-    return speed / (this.referenceSpeed * 3);
+    // Slow overall velocity to ~1/3 of prior, then ease it down another 25%.
+    return speed / (this.referenceSpeed * 3.75);
   }
 }

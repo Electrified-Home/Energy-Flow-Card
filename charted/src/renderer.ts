@@ -37,6 +37,7 @@ export class ChartedRenderer {
   private chipManager: ChipManager;
   public lastHistoricalData?: HistoricalData;
   private onLiveValues?: (payload: any) => void;
+  private disposed = false;
 
   constructor(
     container: HTMLElement,
@@ -63,11 +64,14 @@ export class ChartedRenderer {
   }
 
   async update(hass: HomeAssistant, config: ChartedCardConfig) {
+    if (this.disposed) return;
+
     this.hass = hass;
     this.config = config;
 
     try {
       const data = await fetchHistoricalData(hass, config);
+      if (this.disposed) return;
       const { merged } = mergeLivePoint(data, hass, config);
       this.lastHistoricalData = merged;
       this._renderChart(merged);
@@ -79,6 +83,8 @@ export class ChartedRenderer {
   }
 
   private _renderChart(data: HistoricalData) {
+    if (this.disposed) return;
+
     // Build unified timestamp array for proper stacking
     const { timestamps, firstTs, lastTs } = buildTimestampArray(data);
 
@@ -112,10 +118,13 @@ export class ChartedRenderer {
   }
 
   resize() {
+    if (this.disposed) return;
     this.chart.resize();
   }
 
   dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
     this.chart.off('click', this._handleChartClick);
     this.resizeObserver.disconnect();
     this.chipManager.dispose();

@@ -197,7 +197,7 @@ describe('AnimationController', () => {
       controller.setLoadSpeed(100);
       controller.start(mockShadowRoot);
 
-      expect(loadAnimation.playbackRate).toBeCloseTo(1 / 3); // 100W => slowed reference rate
+      expect(loadAnimation.playbackRate).toBeCloseTo(1 / 3.75); // 100W => slowed reference rate (25% slower)
       expect(loadAnimation.play).toHaveBeenCalled();
 
       controller.stop();
@@ -208,7 +208,7 @@ describe('AnimationController', () => {
       controller.start(mockShadowRoot);
 
       expect(batteryAnimation.playbackRate).toBeGreaterThan(0);
-      expect(batteryAnimation.playbackRate).toBeCloseTo(2 / 3); // 200W => slowed reference
+      expect(batteryAnimation.playbackRate).toBeCloseTo(2 / 3.75); // 200W => slowed reference (25% slower)
       expect(batteryAnimation.effect.updateTiming).toHaveBeenCalledWith({ direction: 'reverse' });
       expect(batteryAnimation.play).toHaveBeenCalled();
 
@@ -220,7 +220,7 @@ describe('AnimationController', () => {
       controller.start(mockShadowRoot);
 
       expect(batteryAnimation.playbackRate).toBeGreaterThan(0);
-      expect(batteryAnimation.playbackRate).toBeCloseTo(2 / 3);
+      expect(batteryAnimation.playbackRate).toBeCloseTo(2 / 3.75);
       expect(batteryAnimation.effect.updateTiming).toHaveBeenCalledWith({ direction: 'normal' });
       expect(batteryAnimation.play).toHaveBeenCalled();
 

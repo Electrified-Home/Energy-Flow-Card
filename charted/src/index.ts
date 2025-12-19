@@ -258,6 +258,15 @@ export class ChartedCard extends HassCardBase {
     const container = this.shadowRoot?.querySelector('#chart-container') as HTMLElement;
     if (!container) return;
 
+    // Avoid initializing ECharts when the container is still 0x0 (e.g., hidden tab/dashboard)
+    const hasSize = await this.ensureContainerHasSize(container);
+    if (!hasSize) {
+      if (this.config.debug_overlay) {
+        console.warn('[charted] chart container has no size yet; deferring init');
+      }
+      return;
+    }
+
     const derived = this.resolveDerivedConfig(this.hass);
     this.derivedHours = derived.hours;
     this.derivedPoints = derived.pointsPerHour;
@@ -281,6 +290,34 @@ export class ChartedCard extends HassCardBase {
 
     await this.renderer.update(this.hass, resolvedConfig);
     this.lastHistoryFetch = Date.now();
+  }
+
+  private async ensureContainerHasSize(container: HTMLElement): Promise<boolean> {
+    if (container.clientWidth > 0 && container.clientHeight > 0) return true;
+
+    return new Promise((resolve) => {
+      let resolved = false;
+      const finish = (result: boolean) => {
+        if (resolved) return;
+        resolved = true;
+        resolve(result);
+      };
+
+      const observer = new ResizeObserver(() => {
+        if (container.clientWidth > 0 && container.clientHeight > 0) {
+          observer.disconnect();
+          finish(true);
+        }
+      });
+
+      observer.observe(container);
+
+      // Fallback timeout so we do not hang forever if the card stays hidden
+      setTimeout(() => {
+        observer.disconnect();
+        finish(container.clientWidth > 0 && container.clientHeight > 0);
+      }, 800);
+    });
   }
 
   private async fetchHistoryData() {

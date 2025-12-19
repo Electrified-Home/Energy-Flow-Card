@@ -115,11 +115,11 @@ export const compactCardStyles = css`
   }
 
   .compact-card .shine-fallback-horizontal {
-    animation: shine-horizontal 60s linear infinite;
+    animation: shine-horizontal 75s linear infinite;
   }
 
   .compact-card .shine-fallback-vertical {
-    animation: shine-vertical 60s linear infinite;
+    animation: shine-vertical 75s linear infinite;
   }
 
   .compact-card .bar-segment {
