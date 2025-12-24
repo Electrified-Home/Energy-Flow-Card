@@ -16,6 +16,7 @@ export class AnimationController {
 
   // Ignore tiny flows to avoid flicker/ghost animation.
   private readonly minAnimatedWatts = 8;
+  private readonly batteryIdleEpsilon = 18; // treat tiny battery trickle as idle to avoid ghost shimmer
   private readonly referenceWatts = 100;
   private readonly referenceSpeed = 2.5; // % per second at reference watts
   private readonly baseDurationMs = 20_000; // ms for 200% travel
@@ -33,8 +34,14 @@ export class AnimationController {
   }
 
   setBatteryAnimation(watts: number, direction: BatteryDirection): void {
-    this.batterySpeed = this.getAnimationSpeed(Math.abs(watts));
-    this.batteryDirection = direction;
+    const magnitude = Math.abs(watts);
+    if (magnitude < this.batteryIdleEpsilon) {
+      this.batterySpeed = 0;
+      this.batteryDirection = 'none';
+    } else {
+      this.batterySpeed = this.getAnimationSpeed(magnitude);
+      this.batteryDirection = direction;
+    }
     this.applyBatteryAnimation();
   }
 
