@@ -227,7 +227,7 @@ class CompactHomeEnergyFlowCard extends HassCardBase {
   }
 
   private renderBatteryRow(battery: number, flows: any, batterySoc: number | null) {
-    const batteryData = calculateBatteryBarData(battery, flows);
+    const batteryData = calculateBatteryBarData(battery, flows, this.renderData!.grid);
 
     // Update animation
     if (this.isAnimationEnabled()) {

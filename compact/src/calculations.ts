@@ -48,10 +48,14 @@ export function calculateLoadBarPercentages(
 
 /**
  * Calculate battery bar flow data
+ * @param battery - Battery power reading (positive = discharge, negative = charge)
+ * @param flows - Calculated energy flows
+ * @param actualGrid - Actual grid power reading (positive = import, negative = export)
  */
 export function calculateBatteryBarData(
   battery: number,
-  flows: EnergyFlows
+  flows: EnergyFlows,
+  actualGrid: number
 ): BatteryBarData {
   let gridWatts = 0;
   let loadWatts = 0;
@@ -85,16 +89,27 @@ export function calculateBatteryBarData(
   } else if (battery > 0) {
     // DISCHARGING
     direction = 'down';
-    gridIsImport = false;
     
     const batteryTotal = battery || 1;
     const batteryToGrid = battery - flows.batteryToLoad;
 
     loadWatts = flows.batteryToLoad;
-    gridWatts = batteryToGrid;
+    
+    // Only show grid export flow if grid is actually exporting (negative)
+    // Clamp to actual export amount to avoid showing impossible flows
+    // Never use export color/visualization when grid is importing or idle
+    if (actualGrid < -10) {
+      gridIsImport = false; // Exporting
+      gridWatts = Math.min(batteryToGrid, Math.abs(actualGrid));
+    } else {
+      // Grid is not exporting (importing or zero), so any remaining battery discharge
+      // is unaccounted (losses, measurement timing, etc) - don't show it as export
+      gridIsImport = true; // Treat as import to avoid export color
+      gridWatts = 0;
+    }
 
     const rawLoadPercent = (flows.batteryToLoad / batteryTotal) * 100;
-    const rawGridPercent = (batteryToGrid / batteryTotal) * 100;
+    const rawGridPercent = (gridWatts / batteryTotal) * 100;
 
     const dischargeSum = rawLoadPercent + rawGridPercent;
     if (dischargeSum > 0) {

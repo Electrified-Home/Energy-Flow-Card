@@ -147,8 +147,9 @@ describe('Compact Card Calculations', () => {
           gridToLoad: 0,
           gridToBattery: 200
         };
+        const actualGrid = 200; // importing to charge battery
 
-        const result = calculateBatteryBarData(battery, flows);
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
 
         expect(result.direction).toBe('up');
         expect(result.gridIsImport).toBe(true);
@@ -170,8 +171,9 @@ describe('Compact Card Calculations', () => {
           gridToLoad: 0,
           gridToBattery: 0
         };
+        const actualGrid = 0; // no grid involvement
 
-        const result = calculateBatteryBarData(battery, flows);
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
 
         expect(result.direction).toBe('up');
         expect(result.gridIsImport).toBe(true);
@@ -193,8 +195,9 @@ describe('Compact Card Calculations', () => {
           gridToLoad: 0,
           gridToBattery: 100
         };
+        const actualGrid = 100; // importing to supplement production
 
-        const result = calculateBatteryBarData(battery, flows);
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
 
         expect(result.direction).toBe('up');
         expect(result.gridIsImport).toBe(true);
@@ -216,11 +219,12 @@ describe('Compact Card Calculations', () => {
           gridToLoad: 0,
           gridToBattery: 0
         };
+        const actualGrid = 0; // no grid activity
 
-        const result = calculateBatteryBarData(battery, flows);
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
 
         expect(result.direction).toBe('down');
-        expect(result.gridIsImport).toBe(false);
+        expect(result.gridIsImport).toBe(true); // No export, avoid export color
         expect(result.loadWatts).toBe(500);
         expect(result.gridWatts).toBe(0);
         expect(result.productionWatts).toBe(0);
@@ -238,8 +242,9 @@ describe('Compact Card Calculations', () => {
           gridToLoad: 0,
           gridToBattery: 0
         };
+        const actualGrid = -600; // exporting all battery discharge
 
-        const result = calculateBatteryBarData(battery, flows);
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
 
         expect(result.direction).toBe('down');
         expect(result.gridIsImport).toBe(false);
@@ -258,8 +263,9 @@ describe('Compact Card Calculations', () => {
           gridToLoad: 0,
           gridToBattery: 0
         };
+        const actualGrid = -200; // exporting surplus battery discharge
 
-        const result = calculateBatteryBarData(battery, flows);
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
 
         expect(result.direction).toBe('down');
         expect(result.gridIsImport).toBe(false);
@@ -281,8 +287,9 @@ describe('Compact Card Calculations', () => {
           gridToLoad: 0,
           gridToBattery: 0
         };
+        const actualGrid = 0; // no grid activity
 
-        const result = calculateBatteryBarData(battery, flows);
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
 
         expect(result.direction).toBe('none');
         expect(result.gridIsImport).toBe(false);
@@ -306,8 +313,9 @@ describe('Compact Card Calculations', () => {
           gridToLoad: 0,
           gridToBattery: 0
         };
+        const actualGrid = 0;
 
-        const result = calculateBatteryBarData(battery, flows);
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
 
         expect(result.direction).toBe('up');
         expect(result.productionWatts).toBe(1);
@@ -324,12 +332,98 @@ describe('Compact Card Calculations', () => {
           gridToLoad: 0,
           gridToBattery: 0
         };
+        const actualGrid = 0;
 
-        const result = calculateBatteryBarData(battery, flows);
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
 
         expect(result.direction).toBe('down');
         expect(result.loadWatts).toBe(1);
         expect(result.loadPercent).toBe(100);
+      });
+    });
+
+    describe('grid reconciliation', () => {
+      it('should not show battery-to-grid flow when grid is not exporting', () => {
+        const battery = 800;
+        const flows: EnergyFlows = {
+          productionToLoad: 0,
+          productionToBattery: 0,
+          productionToGrid: 0,
+          batteryToLoad: 600,
+          gridToLoad: 0,
+          gridToBattery: 0
+        };
+        const actualGrid = 0; // grid shows zero, not exporting
+
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
+
+        expect(result.direction).toBe('down');
+        expect(result.loadWatts).toBe(600);
+        expect(result.gridWatts).toBe(0); // Should NOT show 200W to grid
+        expect(result.gridIsImport).toBe(true); // Should use import color, not export
+        expect(result.loadPercent).toBe(100); // Load gets all the visual space
+        expect(result.gridPercent).toBe(0);
+      });
+
+      it('should not show battery-to-grid flow when grid is importing', () => {
+        const battery = 500;
+        const flows: EnergyFlows = {
+          productionToLoad: 0,
+          productionToBattery: 0,
+          productionToGrid: 0,
+          batteryToLoad: 300,
+          gridToLoad: 0,
+          gridToBattery: 0
+        };
+        const actualGrid = 50; // grid is importing, not exporting
+
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
+
+        expect(result.direction).toBe('down');
+        expect(result.loadWatts).toBe(300);
+        expect(result.gridWatts).toBe(0); // Should NOT show remainder to grid
+        expect(result.gridIsImport).toBe(true); // Should use import color, not export
+      });
+
+      it('should clamp battery-to-grid flow to actual export amount', () => {
+        const battery = 1000;
+        const flows: EnergyFlows = {
+          productionToLoad: 0,
+          productionToBattery: 0,
+          productionToGrid: 0,
+          batteryToLoad: 400,
+          gridToLoad: 0,
+          gridToBattery: 0
+        };
+        const actualGrid = -300; // only 300W actually exporting, not the full 600W remainder
+
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
+
+        expect(result.direction).toBe('down');
+        expect(result.loadWatts).toBe(400);
+        expect(result.gridWatts).toBe(300); // Clamped to actual export
+        expect(result.gridIsImport).toBe(false);
+        // Visual percentages should be scaled based on 700W total (400 + 300)
+        expect(result.loadPercent).toBeCloseTo(57.14, 1);
+        expect(result.gridPercent).toBeCloseTo(42.86, 1);
+      });
+
+      it('should handle small export threshold correctly', () => {
+        const battery = 200;
+        const flows: EnergyFlows = {
+          productionToLoad: 0,
+          productionToBattery: 0,
+          productionToGrid: 0,
+          batteryToLoad: 150,
+          gridToLoad: 0,
+          gridToBattery: 0
+        };
+        const actualGrid = -5; // Below threshold, treat as zero
+
+        const result = calculateBatteryBarData(battery, flows, actualGrid);
+
+        expect(result.gridWatts).toBe(0); // Below -10W threshold
+        expect(result.loadWatts).toBe(150);
       });
     });
   });
